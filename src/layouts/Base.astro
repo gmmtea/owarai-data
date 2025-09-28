@@ -1,5 +1,5 @@
 ---
-import "../styles/global.css";
+import globalCssUrl from '../styles/global.css?url';
 const { title = "お笑い主要データまとめ", description = "M-1/KOC/R-1 決勝結果まとめ" } = Astro.props;
 const siteTitle = "お笑い主要データまとめ";
 const base = import.meta.env.BASE_URL;
@@ -18,6 +18,7 @@ const base = import.meta.env.BASE_URL;
     <meta property="og:description" content={description} />
     <meta property="og:type" content="website" />
     <meta name="theme-color" content="#111111" />
+		<link rel="stylesheet" href={globalCssUrl} />
   </head>
   <body>
     <a class="skip" href="#main">本文へスキップ</a>
