@@ -34,6 +34,7 @@ function computeRankSort(rankRaw) {
   if (r === "ベスト4") return 3;
   if (r === "決勝進出")   return 12;
   if (r === "ベスト8") return 12;
+  if (r === "ファーストステージ敗退")   return 12;
   if (r === "準決勝進出")   return 50;
   if (r === "準々決勝進出") return 100;
   if (r === "3回戦進出")    return 500;
