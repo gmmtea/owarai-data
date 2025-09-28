@@ -3,6 +3,8 @@ import Base from "../../layouts/Base.astro";
 import { listEditionParams, getCompetitionYearTables } from "../../lib/queries";
 import { orderColumns, labelFor, MULTILINE_KEYS, normalizeCellValue } from "../../lib/columns";
 
+const base = import.meta.env.BASE_URL;
+
 export async function getStaticPaths() {
   // editionsに存在する大会キーだけに限定（空大会でビルドが落ちないように）
   const params = listEditionParams(); // [{comp, year}, ...]
@@ -17,7 +19,7 @@ const compName = list[0].table.edition.competition_name;
 ---
 <Base title={`${compName} 年別結果`}>
   <nav class="breadcrumbs">
-    <a href="./">トップ</a><span class="sep">/</span>
+    <a href={base}>トップ</a><span class="sep">/</span>
     <span>{compName}</span>
   </nav>
 
@@ -27,7 +29,7 @@ const compName = list[0].table.edition.competition_name;
     const cols = orderColumns(table.extraKeys);
     return (
       <section>
-        <h2 class="kv">{year}年 <a class="muted" href={`${comp}/${year}`}>（単独ページ）</a></h2>
+        <h2 class="kv">{year}年 <a class="muted" href={`${base}${comp}/${year}`}>（単独ページ）</a></h2>
         <div class="table-wrap">
           <table>
             <thead>
@@ -40,7 +42,7 @@ const compName = list[0].table.edition.competition_name;
               {table.rows.map((r: any) => (
                 <tr>
                   <td><span class="badge" data-ranksort={r.rank_sort}>{r.rank}</span></td>
-                  <td><a href={`co/${r.comedian_id}`}>{r.name}</a></td>
+                  <td><a href={`${base}co/${r.comedian_id}`}>{r.name}</a></td>
                   {cols.map((k) => (
                     <td class={MULTILINE_KEYS.has(k) ? "multiline" : undefined}>
                       {normalizeCellValue(k, r[k])}
