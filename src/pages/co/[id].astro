@@ -15,7 +15,7 @@ const { comedian, byComp } = data;
 ---
 <Base title={`${comedian.name} の戦績`}>
   <nav class="breadcrumbs">
-    <a href="/">トップ</a><span class="sep">/</span>
+    <a href="../">トップ</a><span class="sep">/</span>
     <span>{comedian.name}</span>
   </nav>
 
@@ -37,7 +37,7 @@ const { comedian, byComp } = data;
             <tbody>
               {block.rows.map((r: any) => (
                 <tr>
-                  <td><a href={`/${comp}/${r.year}`}>{r.year}</a></td>
+                  <td><a href={`../${comp}/${r.year}`}>{r.year}</a></td>
                   <td><span class="badge" data-ranksort={r.rank_sort}>{r.rank}</span></td>
                   {cols.map((k) => (
                     <td class={MULTILINE_KEYS.has(k) ? "multiline" : undefined}>

@@ -2,6 +2,8 @@
 import Base from "../layouts/Base.astro";
 import { listEditionParams } from "../lib/queries";
 
+// const base = import.meta.env.BASE_URL;
+
 const params = listEditionParams();
 import { competitionMap } from "../lib/queries";
 const labels = competitionMap();
@@ -40,9 +42,9 @@ const ordered = compOrder
     <section>
       <h2>{labels[comp]}</h2>
       <ul>
-        {years.map((y) => <li><a href={`/${comp}/${y}`}>{y}年 決勝結果</a></li>)}
+        {years.map((y) => <li><a href={`${comp}/${y}`}>{y}年 決勝結果</a></li>)}
       </ul>
-      <p><a href={`/${comp}`}>→ {labels[comp]} 年別結果一覧</a></p>
+      <p><a href={`${comp}`}>→ {labels[comp]} 年別結果一覧</a></p>
     </section>
   ))}
 </Base>

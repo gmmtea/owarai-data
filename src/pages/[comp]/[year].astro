@@ -19,8 +19,8 @@ const cols = orderColumns(extraKeys);
 ---
 <Base title={`${edition.competition_name} ${edition.year} 決勝結果`}>
   <nav class="breadcrumbs">
-    <a href="/">トップ</a><span class="sep">/</span>
-    <a href={`/${comp}`}>{labels[comp]}</a><span class="sep">/</span>
+    <a href="../">トップ</a><span class="sep">/</span>
+    <a href={`../${comp}`}>{labels[comp]}</a><span class="sep">/</span>
     <span>{edition.year}年</span>
   </nav>
 
@@ -39,7 +39,7 @@ const cols = orderColumns(extraKeys);
             <td>
               <span class="badge" data-ranksort={r.rank_sort}>{r.rank}</span>
             </td>
-            <td><a href={`/co/${r.comedian_id}`}>{r.name}</a></td>
+            <td><a href={`../co/${r.comedian_id}`}>{r.name}</a></td>
             {cols.map((k) => (
               <td class={MULTILINE_KEYS.has(k) ? "multiline" : undefined}>
                 {normalizeCellValue(k, r[k])}
@@ -51,5 +51,5 @@ const cols = orderColumns(extraKeys);
     </table>
   </div>
 
-  <p class="muted"><a href={`/${comp}`}>← {edition.competition_name} 年別一覧</a> / <a href="/">トップ</a></p>
+  <p class="muted"><a href={`../${comp}`}>← {edition.competition_name} 年別一覧</a> / <a href="../">トップ</a></p>
 </Base>

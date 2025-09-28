@@ -1,7 +1,8 @@
 ---
-import "../styles/global.css"; // ← グローバルCSSを読む
+import "../styles/global.css";
 const { title = "お笑い主要データまとめ", description = "M-1/KOC/R-1 決勝結果まとめ" } = Astro.props;
 const siteTitle = "お笑い主要データまとめ";
+const base = import.meta.env.BASE_URL;
 ---
 <!DOCTYPE html>
 <html lang="ja">
@@ -22,11 +23,11 @@ const siteTitle = "お笑い主要データまとめ";
     <a class="skip" href="#main">本文へスキップ</a>
     <header class="site-header">
       <div class="container header-row">
-        <a class="brand" href="/">{siteTitle}</a>
+        <a class="brand" href={base}>{siteTitle}</a>
         <nav class="nav">
-          <a href="/m1">M-1</a>
-          <a href="/koc">KOC</a>
-          <a href="/r1">R-1</a>
+          <a href={`${base}m1`}>M-1</a>
+          <a href={`${base}koc`}>KOC</a>
+          <a href={`${base}r1`}>R-1</a>
         </nav>
       </div>
     </header>
