@@ -1,0 +1,55 @@
+---
+import Base from "../../layouts/Base.astro";
+import { listTargetComedianIds, getComedianTables } from "../../lib/queries";
+import { orderColumns, labelFor, MULTILINE_KEYS, normalizeCellValue } from "../../lib/columns";
+
+export async function getStaticPaths() {
+  const ids = listTargetComedianIds(); // string[]
+  return ids.map((id) => ({ params: { id } }));
+}
+
+const { id } = Astro.params as { id: string };
+const data = getComedianTables(id);
+if (!data) throw new Error("該当データなし");
+const { comedian, byComp } = data;
+---
+<Base title={`${comedian.name} の戦績`}>
+  <nav class="breadcrumbs">
+    <a href="/">トップ</a><span class="sep">/</span>
+    <span>{comedian.name}</span>
+  </nav>
+
+  <h1>{comedian.name} の戦績</h1>
+
+  {Object.entries(byComp).map(([comp, block]: any) => {
+    const cols = orderColumns(block.extraKeys);
+    return (
+      <section>
+        <h2>{block.competition_name}</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>年</th><th>順位</th>
+                {cols.map((k: string) => <th>{labelFor(k)}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {block.rows.map((r: any) => (
+                <tr>
+                  <td><a href={`/${comp}/${r.year}`}>{r.year}</a></td>
+                  <td><span class="badge" data-ranksort={r.rank_sort}>{r.rank}</span></td>
+                  {cols.map((k) => (
+                    <td class={MULTILINE_KEYS.has(k) ? "multiline" : undefined}>
+                      {normalizeCellValue(k, r[k])}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    );
+  })}
+</Base>

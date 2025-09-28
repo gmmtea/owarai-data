@@ -1,0 +1,57 @@
+---
+import Base from "../../layouts/Base.astro";
+import { listEditionParams, getCompetitionYearTables } from "../../lib/queries";
+import { orderColumns, labelFor, MULTILINE_KEYS, normalizeCellValue } from "../../lib/columns";
+
+export async function getStaticPaths() {
+  // editionsに存在する大会キーだけに限定（空大会でビルドが落ちないように）
+  const params = listEditionParams(); // [{comp, year}, ...]
+  const comps = Array.from(new Set(params.map(p => p.comp)));
+  return comps.map((comp) => ({ params: { comp } }));
+}
+
+const { comp } = Astro.params as { comp: string };
+const list = getCompetitionYearTables(comp);
+if (!list.length) throw new Error("該当データなし");
+const compName = list[0].table.edition.competition_name;
+---
+<Base title={`${compName} 年別結果`}>
+  <nav class="breadcrumbs">
+    <a href="/">トップ</a><span class="sep">/</span>
+    <span>{compName}</span>
+  </nav>
+
+  <h1>{compName} 年別結果</h1>
+
+  {list.map(({ year, table }) => {
+    const cols = orderColumns(table.extraKeys);
+    return (
+      <section>
+        <h2 class="kv">{year}年 <a class="muted" href={`/${comp}/${year}`}>（単独ページ）</a></h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>順位</th><th>芸人</th>
+                {cols.map((k: string) => <th>{labelFor(k)}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {table.rows.map((r: any) => (
+                <tr>
+                  <td><span class="badge" data-ranksort={r.rank_sort}>{r.rank}</span></td>
+                  <td><a href={`/co/${r.comedian_id}`}>{r.name}</a></td>
+                  {cols.map((k) => (
+                    <td class={MULTILINE_KEYS.has(k) ? "multiline" : undefined}>
+                      {normalizeCellValue(k, r[k])}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    );
+  })}
+</Base>

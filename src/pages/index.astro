@@ -1,11 +1,48 @@
 ---
-import Welcome from '../components/Welcome.astro';
-import Layout from '../layouts/Layout.astro';
+import Base from "../layouts/Base.astro";
+import { listEditionParams } from "../lib/queries";
 
-// Welcome to Astro! Wondering what to do next? Check out the Astro documentation at https://docs.astro.build
-// Don't want to use any of this? Delete everything in this file, the `assets`, `components`, and `layouts` directories, and start fresh.
+const params = listEditionParams();
+import { competitionMap } from "../lib/queries";
+const labels = competitionMap();
+// 使用例: labels[comp] ?? comp
+
+// Mapで収集
+const groups = new Map<string, number[]>();
+for (const { comp, year } of params) {
+  if (!groups.has(comp)) groups.set(comp, []);
+  groups.get(comp)!.push(Number(year));
+}
+
+// ★ 表示順を固定（M → C → R）
+const compOrder: Array<keyof typeof labels> = ["m1", "koc", "r1"];
+
+// 出力用に整形
+const ordered = compOrder
+  .filter((c) => groups.has(c))
+  .map((c) => [c, groups.get(c)!.sort((a,b)=>b-a)] as const);
 ---
+<Base title="お笑い主要データまとめ">
+  <h1>お笑い主要データまとめ</h1>
+  <div class="card">
+    <p class="muted">
+      お笑い賞レースの年別結果と、芸人ごとの戦績を横断して参照できる非公式データ集です。
+    </p>
+    <p class="muted">
+      現状の収録範囲:
+    </p>
+    <ul class="muted">
+      <li>M-1／KOC／R-1 全大会の決勝結果（順位／キャッチコピー／1本目出順／1本目結果／2本目出順／2本目結果）</li>
+    </ul>
+  </div>
 
-<Layout>
-	<Welcome />
-</Layout>
+  {ordered.map(([comp, years]) => (
+    <section>
+      <h2>{labels[comp]}</h2>
+      <ul>
+        {years.map((y) => <li><a href={`/${comp}/${y}`}>{y}年 決勝結果</a></li>)}
+      </ul>
+      <p><a href={`/${comp}`}>→ {labels[comp]} 年別結果一覧</a></p>
+    </section>
+  ))}
+</Base>
