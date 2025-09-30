@@ -19,6 +19,19 @@ const base = import.meta.env.BASE_URL;
     <meta property="og:type" content="website" />
     <meta name="theme-color" content="#111111" />
 		<style is:global set:html={globalCss}></style>
+		{import.meta.env.PROD && (
+			<>
+				<!-- Google tag (gtag.js) -->
+				<script async src="https://www.googletagmanager.com/gtag/js?id=G-9Y0DD8R00V"></script>
+				<script is:inline>
+					window.dataLayer = window.dataLayer || [];
+					function gtag(){dataLayer.push(arguments);}
+					gtag('js', new Date());
+
+					gtag('config', 'G-9Y0DD8R00V');
+				</script>
+			</>
+		)}
   </head>
   <body>
     <a class="skip" href="#main">本文へスキップ</a>
