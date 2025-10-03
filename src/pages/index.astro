@@ -1,7 +1,6 @@
 ---
 import Base from "../layouts/Base.astro";
-import { listEditionParams } from "../lib/queries";
-import { competitionMap } from "../lib/queries";
+import { listEditionParams, competitionMap, competitionOrder } from "../lib/queries";
 
 const base = import.meta.env.BASE_URL;
 
@@ -9,15 +8,15 @@ const params = listEditionParams();
 const labels = competitionMap();
 // 使用例: labels[comp] ?? comp
 
+// 並び順をDB定義に合わせる
+const compOrder = competitionOrder(); // string[]
+
 // Mapで収集
 const groups = new Map<string, number[]>();
 for (const { comp, year } of params) {
   if (!groups.has(comp)) groups.set(comp, []);
   groups.get(comp)!.push(Number(year));
 }
-
-// ★ 表示順を固定（M → C → R）
-const compOrder: Array<keyof typeof labels> = ["m1", "koc", "r1"];
 
 // 出力用に整形
 const ordered = compOrder

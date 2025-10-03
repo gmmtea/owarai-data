@@ -18,6 +18,12 @@ export function competitionMap(): Record<string, string> {
   return map;
 }
 
+export function competitionOrder(): string[] {
+  // listCompetitions() は ORDER BY sort_order IS NULL, sort_order, key で並ぶので、
+  // そのまま key の配列にして返す
+  return listCompetitions().map(c => c.key);
+}
+
 export function competitionName(key: string): string | null {
   const row = db().prepare(`select name from competitions where key=? limit 1`).get(key) as { name: string } | undefined;
   return row?.name ?? null;
@@ -110,13 +116,10 @@ export function getComedianTables(comedianId: string) {
     join comedians  co  on co.id = fr.comedian_id
     where fr.comedian_id = ?
     order by
-      case c.key
-        when 'm1'  then 1
-        when 'koc' then 2
-        when 'r1'  then 3
-        else 99
-      end,
-      e.year desc
+      (c.sort_order is null),  -- nullは後ろへ
+      c.sort_order,            -- 昇順で並べる
+      c.key,                   -- 同順番ならkeyで安定化
+      e.year desc              -- 各大会内は年の降順
   `;
   const rows = db().prepare(sql).all(comedianId) as any[];
 
