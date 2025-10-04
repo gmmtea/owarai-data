@@ -216,3 +216,59 @@ a:focus, button:focus, [tabindex]:focus{
   outline-offset: 2px;
   border-radius:6px;
 }
+
+/* --- wide table + sticky first column + compact numeric cols --- */
+
+/* 横スクロールを許可（既に .table-wrap はあるが最小幅を強める） */
+.table-wrap table { min-width: 960px; }
+
+/* ヘッダは折返しにくくする */
+.table-wrap th { white-space: nowrap; }
+
+/* 1列目を固定（年・順位など先頭セル用） */
+.table-wrap th.sticky-1,
+.table-wrap td.sticky-1 {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+}
+.table-wrap th.sticky-1 { background: var(--brand); color: var(--brand-contrast); }
+.table-wrap td.sticky-1 { background: #fff; }
+
+/* 列の幅・整列（必要に応じて微調整） */
+.col-year   { min-width: 60px;  } /* 年 */
+/* .col-rank   { min-width: 60px;  } 順位 */
+.col-rank { 
+  min-width: 60px;
+  width: 1%;         /* テーブルの自動レイアウトで最小化 */
+  white-space: nowrap;
+  padding-right: 6px;
+}
+.col-name   { min-width: 160px; } /* 芸人名 */
+.col-catch  { min-width: 200px; } /* キャッチコピー */
+.col-order  { min-width: 60px;  } /* 出順 */
+.col-result { min-width: 60px;  } /* 結果 */
+.col-title  { min-width: 160px; } /* ネタ */
+
+/* --- video icon link --- */
+a.video-link{
+  display:inline-block;        /* 行内要素化（ベースラインを持つ） */
+  vertical-align:-0.12em;      /* 微調整（環境で±0.02em調整可） */
+  line-height:1;
+  margin-left:0.25em;          /* 「半角スペース」相当の余白を安定させる */
+  border-radius:6px;           /* 既存のホバー背景に合わせて残すなら可 */
+  text-decoration:none;
+}
+
+a.video-link:hover{
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+a.video-link svg{
+  width:1.05em;                /* 文字サイズに追随 */
+  height:1.05em;
+  display:block;               /* 行ボックスの余白を消す */
+}
+
+/* YouTubeカラー（必要なら好みで調整可） */
+a.video-link.video-youtube{ color:#ff0033; } /* fill: currentColor */

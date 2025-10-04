@@ -1,7 +1,10 @@
 ---
 import Base from "../../layouts/Base.astro";
 import { listEditionParams, getEditionTable } from "../../lib/queries";
-import { orderColumns, labelFor, MULTILINE_KEYS, normalizeCellValue } from "../../lib/columns";
+import {
+  orderColumns, labelFor, MULTILINE_KEYS, normalizeCellValue,
+  isTitleKey, relatedMovieKeyForTitle, colClassFor
+} from "../../lib/columns";
 
 const base = import.meta.env.BASE_URL;
 
@@ -31,22 +34,44 @@ const cols = orderColumns(extraKeys);
     <table>
       <thead>
         <tr>
-          <th>順位</th><th>芸人</th>
-          {cols.map(k => <th>{labelFor(k)}</th>)}
+          <th class="sticky-1 col-rank">順位</th>
+          <th class="sticky-2 col-name">芸人</th>
+          {cols.map(k => <th class={colClassFor(k)}>{labelFor(k)}</th>)}
         </tr>
       </thead>
       <tbody>
         {rows.map(r => (
           <tr>
-            <td>
+            <td class="sticky-1 col-rank">
               <span class="badge" data-ranksort={r.rank_sort}>{r.rank}</span>
             </td>
-            <td><a href={`${base}co/${r.comedian_id}`}>{r.name}</a></td>
-            {cols.map((k) => (
-              <td class={MULTILINE_KEYS.has(k) ? "multiline" : undefined}>
-                {normalizeCellValue(k, r[k])}
-              </td>
-            ))}
+            <td class="sticky-2 col-name"><a href={`${base}co/${r.comedian_id}`}>{r.name}</a></td>
+            {cols.map((k) => {
+              const text = normalizeCellValue(k, r[k]);
+              const cls  = [colClassFor(k), MULTILINE_KEYS.has(k) ? "multiline" : ""].filter(Boolean).join(" ");
+              if (isTitleKey(k)) {
+                const movieKey = relatedMovieKeyForTitle(k);
+                const url = movieKey ? normalizeCellValue(movieKey, r[movieKey]) : "";
+                const isYouTube = !!url && /(?:^https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\//i.test(url);
+                return (
+                  <td class={cls}>
+                    {text}
+                    {url && " "}
+                    {url && (
+                      <a class={`video-link ${isYouTube ? "video-youtube" : ""}`}
+                         href={url} target="_blank" rel="noopener noreferrer"
+                         aria-label={isYouTube ? "YouTubeで見る" : "動画を見る"}>
+                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                          <path fill="currentColor"
+                            d="M23.5 6.2a4 4 0 0 0-2.8-2.8C18.5 3 12 3 12 3S5.5 3 3.3 3.4A4 4 0 0 0 .5 6.2 41 41 0 0 0 0 12c0 2 .2 3.8.5 5.8a4 4 0 0 0 2.8 2.8C5.5 21 12 21 12 21s6.5 0 8.7-.4a4 4 0 0 0 2.8-2.8c.3-2 .5-3.8.5-5.8s-.2-3.8-.5-5.8ZM9.75 15.02V8.98L15.5 12l-5.75 3.02Z"/>
+                        </svg>
+                      </a>
+                    )}
+                  </td>
+                );
+              }
+              return <td class={cls}>{text}</td>;
+            })}
           </tr>
         ))}
       </tbody>
