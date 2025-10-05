@@ -56,10 +56,28 @@ const readCsv = (name) => {
   });
 };
 
+// かな判定（ひらがな or カタカナのみ）
+const reKanaOnly = /^[\p{sc=Hiragana}\p{sc=Katakana}ー・\s]+$/u;
+const isKanaOnly = (s) => reKanaOnly.test(canon(s));
+
+// カタカナ→ひらがな（U+30A1〜U+30F6 → -0x60）
+const toHiragana = (s) => s.replace(/[\u30A1-\u30F6]/g, ch =>
+  String.fromCharCode(ch.charCodeAt(0) - 0x60)
+);
+
+// 読みの正規化：ひらがなに寄せつつトリム
+const normalizeReading = (s) => {
+  if (s == null) return null;
+  const t = canon(String(s));
+  if (t === "") return null;
+  // カタカナならひらがなに
+  return toHiragana(t);
+};
+
 // CSV読み込み
 const competitions = readCsv("competitions.csv");   // key,name
 const editions     = readCsv("editions.csv");       // comp,year
-const comedians    = readCsv("comedians.csv");      // name,number
+const comedians    = readCsv("comedians.csv");      // name,number,reading(任意)
 const results      = readCsv("final_results.csv");  // comp,year,comedian_name,rank, ...
 
 fs.mkdirSync("data", { recursive: true });
@@ -82,43 +100,50 @@ if (RESET) {
 
 // DDL（DROP後に必ず作る）
 db.exec(`
--- 大会
- CREATE TABLE IF NOT EXISTS competitions (
-   id   INTEGER PRIMARY KEY,
-   key  TEXT UNIQUE NOT NULL,  -- 'm1' | 'koc' | 'r1'
-   name TEXT NOT NULL,
-   sort_order INTEGER
- );
+  -- 大会
+  CREATE TABLE IF NOT EXISTS competitions (
+    id   INTEGER PRIMARY KEY,
+    key  TEXT UNIQUE NOT NULL,  -- 'm1' | 'koc' | 'r1'
+    name TEXT NOT NULL,
+    sort_order INTEGER
+  );
 
--- 大会×年
-CREATE TABLE IF NOT EXISTS editions (
-  id              INTEGER PRIMARY KEY,
-  competition_id  INTEGER NOT NULL REFERENCES competitions(id),
-  year            INTEGER NOT NULL,
-  UNIQUE (competition_id, year)
-);
+  -- 大会×年
+  CREATE TABLE IF NOT EXISTS editions (
+    id              INTEGER PRIMARY KEY,
+    competition_id  INTEGER NOT NULL REFERENCES competitions(id),
+    year            INTEGER NOT NULL,
+    UNIQUE (competition_id, year)
+  );
 
--- 芸人（(name,number)から決定的ID=TEXT主キー）
-CREATE TABLE IF NOT EXISTS comedians (
-  id   TEXT PRIMARY KEY,          -- 例: '3f9a3d...'
-  name TEXT NOT NULL,
-  number INTEGER,                          -- 重複時のみ 2,3,...
-  UNIQUE (name, number)
-);
-CREATE INDEX IF NOT EXISTS idx_co_name_num ON comedians(name, number);
+  -- 芸人（(name,number)から決定的ID=TEXT主キー）
+  CREATE TABLE IF NOT EXISTS comedians (
+    id      TEXT PRIMARY KEY,
+    name    TEXT NOT NULL,
+    number  INTEGER,
+    reading TEXT,             -- ひらがな（null可）
+    UNIQUE (name, number)
+  );
+  CREATE INDEX IF NOT EXISTS idx_co_name_num ON comedians(name, number);
 
--- 決勝結果
-CREATE TABLE IF NOT EXISTS final_results (
-  id           INTEGER PRIMARY KEY,
-  edition_id   INTEGER NOT NULL REFERENCES editions(id),
-  comedian_id  TEXT    NOT NULL REFERENCES comedians(id),
-  rank         TEXT    NOT NULL,
-  rank_sort    INTEGER,
-  UNIQUE (edition_id, comedian_id)
-);
+  -- 決勝結果
+  CREATE TABLE IF NOT EXISTS final_results (
+    id           INTEGER PRIMARY KEY,
+    edition_id   INTEGER NOT NULL REFERENCES editions(id),
+    comedian_id  TEXT    NOT NULL REFERENCES comedians(id),
+    rank         TEXT    NOT NULL,
+    rank_sort    INTEGER,
+    UNIQUE (edition_id, comedian_id)
+  );
 
-CREATE INDEX IF NOT EXISTS idx_fr_edition_rank ON final_results(edition_id, rank);
+  CREATE INDEX IF NOT EXISTS idx_fr_edition_rank ON final_results(edition_id, rank);
 `);
+
+// comedians.reading が無ければ追加（SQLite流の存在確認）
+const coInfo = db.prepare(`PRAGMA table_info('comedians')`).all();
+if (!coInfo.some(c => c.name === 'reading')) {
+  db.exec(`ALTER TABLE comedians ADD COLUMN reading TEXT`);
+}
 
 // rank_sort が無ければ追加
 const frInfo = db.prepare(`PRAGMA table_info('final_results')`).all();
@@ -131,9 +156,24 @@ db.exec(`CREATE INDEX IF NOT EXISTS idx_fr_edition_ranksort ON final_results(edi
 
 // comedians（CSVにある分を先に登録）
 const upsertCo = db.prepare(`
-  INSERT INTO comedians (id, name, number)
-  VALUES (?, ?, ?)
-  ON CONFLICT(name, number) DO NOTHING
+  INSERT INTO comedians (id, name, number, reading)
+  VALUES (?, ?, ?, ?)
+  ON CONFLICT(name, number) DO UPDATE SET
+    reading = COALESCE(comedians.reading, excluded.reading)
+`);
+
+const upsertCoWithReading = db.prepare(`
+  INSERT INTO comedians (id, name, number, reading)
+  VALUES (?, ?, ?, ?)
+  ON CONFLICT(name, number) DO UPDATE SET
+    reading = COALESCE(comedians.reading, excluded.reading)
+`);
+
+// 既存がNULLかつ名前がかなだけなら reading を補完
+const fillReadingIfNull = db.prepare(`
+  UPDATE comedians
+     SET reading = ?
+   WHERE id = ? AND (reading IS NULL OR TRIM(reading) = '')
 `);
 
 // 1) マスタ投入（トランザクション）
@@ -163,7 +203,10 @@ db.transaction(() => {
     const name = canon(r.name);
     const num  = (r.number === "" || r.number == null) ? null : Number(r.number);
     const id   = makeId(name, num);
-    upsertCo.run(id, name, num);
+    // CSVのreadingがあれば採用。無ければ「名前がかなだけ」の時に自動推定
+    const readingCsv   = normalizeReading(r.reading);
+    const readingGuess = (!readingCsv && isKanaOnly(name)) ? toHiragana(name) : readingCsv;
+    upsertCo.run(id, name, num, readingGuess ?? null);
   }
 })();
 
@@ -254,13 +297,33 @@ db.transaction(() => {
     let co = null;
     if (numberFromCsv != null) {
       co = getCoByNameNum.get(name, numberFromCsv, numberFromCsv);
-      if (!co) { const id = makeId(name, numberFromCsv); upsertCo.run(id, name, numberFromCsv); co = getCoByNameNum.get(name, numberFromCsv, numberFromCsv); }
+      if (!co) {
+        const id = makeId(name, numberFromCsv);
+        const guess = isKanaOnly(name) ? toHiragana(name) : null;
+        upsertCoWithReading.run(id, name, numberFromCsv, guess);
+        co = getCoByNameNum.get(name, numberFromCsv, numberFromCsv);
+      } else {
+        // 既存が読み無しで、名前がかななら補完
+        const guess = isKanaOnly(name) ? toHiragana(name) : null;
+        if (guess) fillReadingIfNull.run(guess, co.id);
+      }
     } else {
       // number 指定が無いとき：
       //  1) (name, NULL) が未使用ならそれを作る
       //  2) 既に使用済なら max(number)+1 を自動採番
       co = getCoByNameNum.get(name, null, null);
-      if (!co) { co = insertWithAutoNumber(name); }
+      if (!co) {
+        // insertWithAutoNumber を reading 対応に差し替え
+        const nullExists = hasNullNumber.get(name);
+        const next = nullExists ? (maxNumber.get(name)?.n ?? 1) + 1 : null;
+        const id   = makeId(name, next);
+        const guess = isKanaOnly(name) ? toHiragana(name) : null;
+        upsertCoWithReading.run(id, name, next, guess);
+        co = getCoByNameNum.get(name, next, next);
+      } else {
+        const guess = isKanaOnly(name) ? toHiragana(name) : null;
+        if (guess) fillReadingIfNull.run(guess, co.id);
+      }
     }
 
     const rankText = String(r.rank);

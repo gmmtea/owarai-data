@@ -272,3 +272,5 @@ a.video-link svg{
 
 /* YouTubeカラー（必要なら好みで調整可） */
 a.video-link.video-youtube{ color:#ff0033; } /* fill: currentColor */
+
+.reading{ margin:-4px 0 8px; font-size:14px; }

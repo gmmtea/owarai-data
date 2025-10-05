@@ -94,7 +94,7 @@ export function listTargetComedianIds() {
 
 // 芸人ページ：大会ごとに「年の縦表」
 export function getComedianTables(comedianId: string) {
-  const co = db().prepare(`select id, name from comedians where id=?`).get(comedianId) as any;
+  const co = db().prepare(`select id, name, reading from comedians where id=?`).get(comedianId) as any;
   if (!co) return null;
   const extras = finalResultExtraColumns();
   const selectExtras = extras.length
