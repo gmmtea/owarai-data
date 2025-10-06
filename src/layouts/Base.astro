@@ -1,8 +1,10 @@
 ---
 import globalCss from '../styles/global.css?inline';
+import { listCompetitions } from "../lib/queries";
 const { title = "お笑い主要データまとめ", description = "M-1/KOC/R-1 決勝結果まとめ" } = Astro.props;
 const siteTitle = "お笑い主要データまとめ";
 const base = import.meta.env.BASE_URL;
+const comps = listCompetitions(); // [{key,name,sort_order}, ...]
 ---
 <!DOCTYPE html>
 <html lang="ja">
@@ -39,12 +41,34 @@ const base = import.meta.env.BASE_URL;
       <div class="container header-row">
         <a class="brand" href={base}>{siteTitle}</a>
         <nav class="nav">
-          <a href={`${base}m1`}>M-1</a>
-          <a href={`${base}koc`}>KOC</a>
-          <a href={`${base}r1`}>R-1</a>
+          <details class="menu">
+            <summary>大会</summary>
+            <ul class="menu-list">
+              {comps.map(c => (
+                <li><a href={`${base}${c.key}`}>{c.name}</a></li>
+              ))}
+            </ul>
+          </details>
+          <a href={`${base}co`}>芸人一覧</a>
         </nav>
       </div>
     </header>
+		<script is:inline>
+			// クリックで外側なら閉じる
+			document.addEventListener('click', (ev) => {
+				// 複数将来対応：開いてる details を全部閉じる
+				document.querySelectorAll('details.menu[open]').forEach((el) => {
+					if (!el.contains(ev.target)) el.open = false;
+				});
+			});
+
+			// Esc でも閉じる（フォーカスがどこでもOK）
+			document.addEventListener('keydown', (ev) => {
+				if (ev.key === 'Escape') {
+					document.querySelectorAll('details.menu[open]').forEach((el) => (el.open = false));
+				}
+			});
+		</script>
 
     <main id="main" class="container content">
       <slot />

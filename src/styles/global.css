@@ -274,3 +274,57 @@ a.video-link svg{
 a.video-link.video-youtube{ color:#ff0033; } /* fill: currentColor */
 
 .reading{ margin:-4px 0 8px; font-size:14px; }
+
+/* --- dropdown menu for "大会" --- */
+.nav details.menu{ position:relative; }
+.nav details.menu > summary{
+  list-style:none; cursor:pointer;
+  color:var(--brand-contrast);
+  padding:8px 10px; border-radius:8px; opacity:.9;
+}
+.nav details.menu > summary::-webkit-details-marker{ display:none; }
+.nav details[open] > summary{
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  opacity:1;
+}
+.nav .menu-list{
+  position:absolute; left:0; top:calc(100% + 6px);
+  margin:0; padding:6px;
+  background:#fff; color:var(--text);
+  border:1px solid var(--border); border-radius:10px;
+  min-width:180px; box-shadow:0 6px 24px rgba(0,0,0,.12);
+  z-index:1001; /* ヘッダー上に */
+}
+.nav .menu-list li{ list-style:none; }
+.nav .menu-list a{
+  display:block; padding:8px 10px; border-radius:8px; color:inherit;
+}
+.nav .menu-list a:hover{
+  background: color-mix(in srgb, var(--accent) 12%, #fff);
+  text-decoration:none;
+}
+
+/* モバイル：タップしやすく、はみ出しを防ぐ */
+@media (max-width: 640px){
+  .nav .menu-list{ min-width: 160px; }
+}
+
+/* ▼アイコンをsummaryの右端に表示・開閉で回転 */
+.nav details.menu > summary{
+  position: relative;
+  padding-right: 22px; /* アイコンぶん余白 */
+}
+.nav details.menu > summary::after{
+  content: "";
+  position: absolute; right: 8px; top: 50%;
+  width: 0; height: 0;
+  border-left: 5px solid transparent;
+  border-right:5px solid transparent;
+  border-top: 6px solid currentColor; /* ▼ */
+  transform: translateY(-35%);        /* ベースライン微調整 */
+  opacity: .85;
+  transition: transform .15s ease;
+}
+.nav details[open] > summary::after{
+  transform: translateY(-35%) rotate(180deg); /* ▲に反転 */
+}

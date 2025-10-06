@@ -92,6 +92,12 @@ export function listTargetComedianIds() {
   return rows.map(r => r.id);
 }
 
+// 芸人の素データ（id, name, reading）を取得
+export function listComediansAll(): { id: string; name: string; reading: string | null }[] {
+  // 並びはページ側で調整するので素のまま返す（DBコラレーションを気にしないため）
+  return db().prepare(`SELECT id, name, reading FROM comedians`).all();
+}
+
 // 芸人ページ：大会ごとに「年の縦表」
 export function getComedianTables(comedianId: string) {
   const co = db().prepare(`select id, name, reading from comedians where id=?`).get(comedianId) as any;
