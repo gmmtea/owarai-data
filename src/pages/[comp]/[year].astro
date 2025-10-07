@@ -1,6 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { listEditionParams, getEditionTable } from "../../lib/queries";
+import { listEditionParams, getEditionTable, getEditionJudges, getJudgeScoreTable } from "../../lib/queries";
 import {
   orderColumns, labelFor, MULTILINE_KEYS, normalizeCellValue,
   isTitleKey, relatedMovieKeyForTitle, colClassFor
@@ -21,6 +21,10 @@ const labels: Record<string,string> = { m1:"M-1グランプリ", koc:"キング�
 
 // ★ 並び順を統一
 const cols = orderColumns(extraKeys);
+
+const judges = getEditionJudges(comp, Number(year));
+const round1 = getJudgeScoreTable(comp, Number(year), 1);
+const round2 = getJudgeScoreTable(comp, Number(year), 2);
 ---
 <Base title={`${edition.competition_name} ${edition.year} 決勝結果`}>
   <nav class="breadcrumbs">
@@ -77,6 +81,58 @@ const cols = orderColumns(extraKeys);
       </tbody>
     </table>
   </div>
+
+  {round1 && round1.seats.length > 0 && (
+    <>
+      <h2>1本目 審査員別得点</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>芸人</th>
+              {round1.seats.map(s => <th class="col-score">{s.name}</th>)}
+              <th class="col-total">合計</th>
+            </tr>
+          </thead>
+          <tbody>
+            {round1.rows.map(r => (
+              <tr>
+                <td><a href={`${base}co/${r.comedian_id}`}>{r.comedian_name}</a></td>
+                {round1.seats.map(s => <td class="col-score">{r.bySeat[s.seat_no] ?? ""}</td>)}
+                <td class="col-total">{r.total ?? ""}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  )}
+
+  {round2 && round2.seats.length > 0 && (
+    <>
+      <h2>2本目 審査員別得点</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>芸人</th>
+              {round2.seats.map(s => <th class="col-score">{s.name}</th>)}
+              <th class="col-total">合計</th>
+            </tr>
+          </thead>
+          <tbody>
+            {round2.rows.map(r => (
+              <tr>
+                <td><a href={`${base}co/${r.comedian_id}`}>{r.comedian_name}</a></td>
+                {round2.seats.map(s => <td class="col-score">{r.bySeat[s.seat_no] ?? ""}</td>)}
+                <td class="col-total">{r.total ?? ""}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  )}
 
   <p class="muted"><a href={`${base}${comp}`}>← {edition.competition_name} 年別一覧</a> / <a href={base}>トップ</a></p>
 </Base>

@@ -141,3 +141,79 @@ export function getComedianTables(comedianId: string) {
   }
   return { comedian: co, byComp };
 }
+
+// そのエディションの席並び（ヘッダに使う）
+export function getEditionJudges(comp: string, year: number) {
+  const ed = db().prepare(`
+    SELECT e.id AS eid
+    FROM editions e JOIN competitions c ON c.id=e.competition_id
+    WHERE c.key=? AND e.year=? LIMIT 1
+  `).get(comp, year) as { eid:number } | undefined;
+  if (!ed) return [];
+
+  return db().prepare(`
+    SELECT ej.seat_no, j.name
+    FROM edition_judges ej
+    JOIN judges j ON j.id=ej.judge_id
+    WHERE ej.edition_id=?
+    ORDER BY ej.seat_no
+  `).all(ed.eid) as { seat_no:number; name:string }[];
+}
+
+// ラウンド別：行=芸人、列=席（審査員）の得点と合計
+export function getJudgeScoreTable(comp: string, year: number, round_no: number) {
+  const ed = db().prepare(`
+    SELECT e.id AS eid
+    FROM editions e JOIN competitions c ON c.id=e.competition_id
+    WHERE c.key=? AND e.year=? LIMIT 1
+  `).get(comp, year) as { eid:number } | undefined;
+  if (!ed) return null;
+
+  const seats = db().prepare(`
+    SELECT ej.seat_no, j.name
+    FROM edition_judges ej
+    JOIN judges j ON j.id=ej.judge_id
+    WHERE ej.edition_id=?
+    ORDER BY ej.seat_no
+  `).all(ed.eid) as { seat_no:number; name:string }[];
+
+  const rows = db().prepare(`
+    SELECT fr.comedian_id, co.name AS comedian_name, fr.rank_sort,
+           js.seat_no, js.score
+    FROM final_results fr
+    JOIN comedians co ON co.id=fr.comedian_id
+    LEFT JOIN judge_scores js
+      ON js.edition_id=fr.edition_id
+     AND js.round_no=?
+     AND js.comedian_id=fr.comedian_id
+    WHERE fr.edition_id=?
+      AND EXISTS (
+        SELECT 1 FROM judge_scores js2
+        WHERE js2.edition_id = fr.edition_id
+          AND js2.round_no   = ?
+          AND js2.comedian_id= fr.comedian_id
+      )
+    ORDER BY CAST(fr.rank_sort AS INTEGER) ASC, co.name ASC
+  `).all(round_no, ed.eid, round_no) as Array<{
+    comedian_id:string; comedian_name:string; rank_sort:number;
+    seat_no:number|null; score:number|null;
+  }>;
+
+  // 横持ち化
+  type Row = { comedian_id:string; comedian_name:string; rank_sort:number; bySeat: Record<number, number|null>; total:number|null };
+  const byId = new Map<string, Row>();
+  for (const r of rows) {
+    let row = byId.get(r.comedian_id);
+    if (!row) {
+      row = { comedian_id:r.comedian_id, comedian_name:r.comedian_name, rank_sort:r.rank_sort, bySeat:{}, total:null };
+      byId.set(r.comedian_id, row);
+    }
+    if (r.seat_no != null) row.bySeat[r.seat_no] = r.score;
+  }
+  const out = Array.from(byId.values());
+  for (const row of out) {
+    const vals = seats.map(s => row.bySeat[s.seat_no]).filter(v => typeof v === "number") as number[];
+    row.total = vals.length ? vals.reduce((a,b)=>a+b,0) : null;
+  }
+  return { seats, rows: out };
+}

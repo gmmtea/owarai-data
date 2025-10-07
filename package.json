@@ -10,7 +10,8 @@
     "preview": "astro preview",
     "astro": "astro",
     "deploy:gh": "gh-pages -d dist -b gh-pages",
-    "data:sync:comedians": "node scripts/sync-comedians-csv-from-results.js"
+    "data:sync:comedians": "node scripts/sync-comedians-csv-from-results.js",
+    "data:convert:scores": "node scripts/convert-judge-scores-wide.js"
   },
   "dependencies": {
     "@picocss/pico": "^2.1.1",

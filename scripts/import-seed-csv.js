@@ -74,11 +74,18 @@ const normalizeReading = (s) => {
   return toHiragana(t);
 };
 
+// judge の決定的ID（名前のみで決定）
+const makeJudgeId = (name) =>
+  crypto.createHash("sha256").update(canon(name), "utf8").digest("hex").slice(0, 20);
+
 // CSV読み込み
 const competitions = readCsv("competitions.csv");   // key,name
 const editions     = readCsv("editions.csv");       // comp,year
 const comedians    = readCsv("comedians.csv");      // name,number,reading(任意)
 const results      = readCsv("final_results.csv");  // comp,year,comedian_name,rank, ...
+const judgesCsv        = readCsv("judges.csv");          // name
+const editionJudgesCsv = readCsv("edition_judges.csv");  // comp,year,seat_no,judge_name
+const judgeScoresCsv   = readCsv("judge_scores.csv");    // comp,year,round_no,comedian_name,comedian_number,seat_no,score
 
 fs.mkdirSync("data", { recursive: true });
 const db = new Database(DB_PATH);
@@ -135,8 +142,33 @@ db.exec(`
     rank_sort    INTEGER,
     UNIQUE (edition_id, comedian_id)
   );
-
   CREATE INDEX IF NOT EXISTS idx_fr_edition_rank ON final_results(edition_id, rank);
+
+  -- 審査員マスタ（将来の読み仮名や所属も足せる）
+  CREATE TABLE IF NOT EXISTS judges (
+    id      TEXT PRIMARY KEY,     -- 例: sha1(name)先頭など
+    name    TEXT NOT NULL
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_judges_name ON judges(name);
+
+  -- そのエディションの席配置（左から seat_no=1,2,...）
+  CREATE TABLE IF NOT EXISTS edition_judges (
+    edition_id INTEGER NOT NULL REFERENCES editions(id),
+    seat_no    INTEGER NOT NULL,
+    judge_id   TEXT    NOT NULL REFERENCES judges(id),
+    PRIMARY KEY (edition_id, seat_no)
+  );
+
+  -- ラウンド別の個別得点（1本目=1, 2本目=2 を推奨）
+  CREATE TABLE IF NOT EXISTS judge_scores (
+    edition_id  INTEGER NOT NULL REFERENCES editions(id),
+    round_no    INTEGER NOT NULL,               -- 1 | 2 | （将来3も可）
+    comedian_id TEXT    NOT NULL REFERENCES comedians(id),
+    seat_no     INTEGER NOT NULL,               -- edition_judges.seat_no に対応
+    score       REAL    NOT NULL,               -- 小数対応（必要ならINTEGERでもOK）
+    PRIMARY KEY (edition_id, round_no, comedian_id, seat_no)
+  );
+  CREATE INDEX IF NOT EXISTS idx_js_edition_round ON judge_scores(edition_id, round_no);
 `);
 
 // comedians.reading が無ければ追加（SQLite流の存在確認）
@@ -266,6 +298,29 @@ const insCo = db.prepare(`
   ON CONFLICT(name, number) DO NOTHING
 `);
 
+// judges
+const getJudgeByName = db.prepare(`SELECT id FROM judges WHERE name=? LIMIT 1`);
+const upsertJudge = db.prepare(`
+  INSERT INTO judges (id, name)
+  VALUES (?, ?)
+  ON CONFLICT(name) DO NOTHING
+`);
+
+// edition_judges
+const upsertEditionJudge = db.prepare(`
+  INSERT INTO edition_judges (edition_id, seat_no, judge_id)
+  VALUES (?, ?, ?)
+  ON CONFLICT(edition_id, seat_no) DO UPDATE SET judge_id=excluded.judge_id
+`);
+
+// judge_scores
+const upsertJudgeScore = db.prepare(`
+  INSERT INTO judge_scores (edition_id, round_no, comedian_id, seat_no, score)
+  VALUES (?, ?, ?, ?, ?)
+  ON CONFLICT(edition_id, round_no, comedian_id, seat_no) DO UPDATE SET score=excluded.score
+`);
+
+
 // 挿入列の配列（rank + 追加列）
 const insertCols = ["edition_id", "comedian_id", "rank", "rank_sort", ...extraCols];
 const namedCols   = insertCols.map(c => `"${c}"`).join(",");
@@ -338,6 +393,81 @@ db.transaction(() => {
     for (const k of extraCols) params[k] = toNullable(r[k]);
 
     stmt.run(params);
+  }
+})();
+
+// === 1) judges.csv を反映（読みがあれば採用、無ければ保持優先） ===
+db.transaction(() => {
+  for (const r of judgesCsv) {
+    const name = canon(r.name);
+    if (!name) continue;
+    const row = getJudgeByName.get(name);
+    if (!row) {
+      const id = makeJudgeId(name);
+      upsertJudge.run(id, name);
+    }
+  }
+})();
+
+// === 2) edition_judges.csv（座席配置） ===
+// comp/year → edition_id、judge_name → judge_id を解決して upsert
+db.transaction(() => {
+  for (const r of editionJudgesCsv) {
+    const ed = getEd.get(r.comp, Number(r.year));
+    if (!ed) throw new Error(`edition not found: ${r.comp} ${r.year}`);
+    const seatNo = Number(r.seat_no);
+    const jname = canon(r.judge_name);
+    if (!jname || !Number.isFinite(seatNo)) continue;
+
+    let j = getJudgeByName.get(jname);
+    if (!j) {
+      const id = makeJudgeId(jname);
+      upsertJudge.run(id, jname);      // ← reading なし
+      j = getJudgeByName.get(jname);
+    }
+    upsertEditionJudge.run(ed.id, seatNo, j.id);
+  }
+})();
+
+// === 3) judge_scores.csv（個票） ===
+// comp/year/round_no/comedian/seat_no を解決し、score を upsert
+db.transaction(() => {
+  for (const r of judgeScoresCsv) {
+    const ed = getEd.get(r.comp, Number(r.year));
+    if (!ed) throw new Error(`edition not found: ${r.comp} ${r.year}`);
+
+    const roundNo = Number(r.round_no);
+    const seatNo  = Number(r.seat_no);
+    if (!Number.isFinite(roundNo) || !Number.isFinite(seatNo)) continue;
+
+    // 芸人ID解決（既存の方法に合わせる）
+    const name = canon(r.comedian_name);
+    const numberFromCsv = ("comedian_number" in r && r.comedian_number !== "" && r.comedian_number != null)
+      ? Number(r.comedian_number) : null;
+
+    let co = null;
+    if (numberFromCsv != null) {
+      co = getCoByNameNum.get(name, numberFromCsv, numberFromCsv);
+      if (!co) { const id = makeId(name, numberFromCsv); insCo.run(id, name, numberFromCsv); co = getCoByNameNum.get(name, numberFromCsv, numberFromCsv); }
+    } else {
+      co = getCoByNameNum.get(name, null, null);
+      if (!co) {
+        // 既存の自動採番ロジックと同等
+        const nullExists = hasNullNumber.get(name);
+        const next = nullExists ? (maxNumber.get(name)?.n ?? 1) + 1 : null;
+        const id   = makeId(name, next);
+        insCo.run(id, name, next);
+        co = getCoByNameNum.get(name, next, next);
+      }
+    }
+
+    // スコア
+    const scoreRaw = String(r.score ?? "").trim();
+    if (scoreRaw === "") continue;
+    const score = Number(scoreRaw);
+    if (!Number.isFinite(score)) continue;
+
+    upsertJudgeScore.run(ed.id, roundNo, co.id, seatNo, score);
   }
 })();
 
