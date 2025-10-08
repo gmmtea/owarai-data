@@ -122,7 +122,7 @@ const uid = Math.random().toString(36).slice(2);
         </thead>
         <tbody>
           {table!.rows.map((r, i) => (
-            <tr data-original-index={i}>
+            <tr>
               <td class="col-name"
                   data-value-text={(r.comedian_reading ?? r.comedian_name)}>
                 <a href={`${base}co/${r.comedian_id}`} title={r.comedian_name}>
@@ -159,11 +159,18 @@ const uid = Math.random().toString(36).slice(2);
 
 					const headers = Array.from(thead.querySelectorAll('th[data-sortable]'));
 					let activeKey = null; // 現在ソート中キー
-					let direction = 0;    // 0=未, -1=降順, 1=昇順
+					let direction = -1; // -1=降順, 1=昇順（列ごとに初期値を出し分け）
 
 					function setAria(th, state){
 						headers.forEach(h => h.removeAttribute('aria-sort'));
-						if (state !== 0) th.setAttribute('aria-sort', state === 1 ? 'ascending' : 'descending');
+						th.setAttribute('aria-sort', state === 1 ? 'ascending' : 'descending');
+					}
+
+					// ここで“列ごとの初回方向”を決定
+					function initialDirectionFor(th){
+						const key = th.getAttribute('data-key') || '';
+						if (key === 'name' || key === 'order_no') return 1; // 芸人・出順は昇順スタート
+						return -1; // それ以外は降順スタート（点数・合計など）
 					}
 
 					function compareRow(a, b, th) {
@@ -179,7 +186,7 @@ const uid = Math.random().toString(36).slice(2);
 							if (aEmpty && bEmpty) return 0;
 							if (aEmpty) return 1;   // 空は最後
 							if (bEmpty) return -1;
-							return va - vb;         // 昇順（後で降順に反転）
+							return va - vb;         // 基本は昇順（降順は後で反転）
 						} else {
 							const sa = (ca.getAttribute('data-value-text') || '').toString();
 							const sb = (cb.getAttribute('data-value-text') || '').toString();
@@ -195,21 +202,18 @@ const uid = Math.random().toString(36).slice(2);
 						th.addEventListener('click', () => {
 							const key = th.getAttribute('data-key');
 
-							if (activeKey !== key) { activeKey = key; direction = -1; }  // 新しい列は降順から
-							else { direction = (direction === -1) ? 1 : (direction === 1 ? 0 : -1); }
+							if (activeKey !== key) {
+								activeKey = key;
+								direction = initialDirectionFor(th);       // ← 切替時に列ごとの初期方向を採用
+							} else {
+								direction = (direction === -1) ? 1 : -1;   // 2段階トグル（降↔昇）
+							}
 
 							setAria(th, direction);
 
 							const rows = Array.from(tbody.rows);
-							if (direction === 0) {
-								rows.sort((a,b) =>
-									Number(a.getAttribute('data-original-index')||'0') -
-									Number(b.getAttribute('data-original-index')||'0')
-								);
-							} else {
-								rows.sort((a,b) => compareRow(a,b,th));
-								if (direction === -1) rows.reverse();
-							}
+							rows.sort((a,b) => compareRow(a,b,th));      // まず昇順
+							if (direction === -1) rows.reverse();        // 降順なら反転
 							rows.forEach(r => tbody.appendChild(r));
 						});
 					});
