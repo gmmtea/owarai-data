@@ -178,8 +178,19 @@ export function getJudgeScoreTable(comp: string, year: number, round_no: number)
   `).all(ed.eid) as { seat_no:number; name:string }[];
 
   const rows = db().prepare(`
-    SELECT fr.comedian_id, co.name AS comedian_name, fr.rank_sort,
-           js.seat_no, js.score
+    SELECT
+      fr.comedian_id,
+      co.name    AS comedian_name,
+      co.reading AS comedian_reading,
+      fr.rank_sort,
+      -- ラウンドに応じて出順を拾う（整数化）
+      CASE ?
+        WHEN 1 THEN CAST(fr.first_order  AS INTEGER)
+        WHEN 2 THEN CAST(fr.second_order AS INTEGER)
+        ELSE NULL
+      END AS order_no,
+      js.seat_no,
+      js.score
     FROM final_results fr
     JOIN comedians co ON co.id=fr.comedian_id
     LEFT JOIN judge_scores js
@@ -193,19 +204,39 @@ export function getJudgeScoreTable(comp: string, year: number, round_no: number)
           AND js2.round_no   = ?
           AND js2.comedian_id= fr.comedian_id
       )
-    ORDER BY CAST(fr.rank_sort AS INTEGER) ASC, co.name ASC
-  `).all(round_no, ed.eid, round_no) as Array<{
-    comedian_id:string; comedian_name:string; rank_sort:number;
-    seat_no:number|null; score:number|null;
+    -- 出順があればそれを最優先、無ければ rank_sort→名前
+    ORDER BY (order_no IS NULL), order_no ASC,
+             CAST(fr.rank_sort AS INTEGER) ASC, co.name ASC
+  `).all(round_no, round_no, ed.eid, round_no) as Array<{
+    comedian_id:string;
+    comedian_name:string;
+    comedian_reading:string|null;
+    rank_sort:number;
+    order_no:number|null;
+    seat_no:number|null;
+    score:number|null;
   }>;
 
   // 横持ち化
-  type Row = { comedian_id:string; comedian_name:string; rank_sort:number; bySeat: Record<number, number|null>; total:number|null };
+  type Row = {
+    comedian_id:string; comedian_name:string; comedian_reading:string|null;
+    rank_sort:number; order_no:number|null;
+    bySeat: Record<number, number|null>;
+    total:number|null
+  };
   const byId = new Map<string, Row>();
   for (const r of rows) {
     let row = byId.get(r.comedian_id);
     if (!row) {
-      row = { comedian_id:r.comedian_id, comedian_name:r.comedian_name, rank_sort:r.rank_sort, bySeat:{}, total:null };
+      row = {
+        comedian_id:r.comedian_id,
+        comedian_name:r.comedian_name,
+        comedian_reading:r.comedian_reading ?? null,
+        rank_sort:r.rank_sort,
+        order_no:r.order_no,
+        bySeat:{},
+        total:null
+      };
       byId.set(r.comedian_id, row);
     }
     if (r.seat_no != null) row.bySeat[r.seat_no] = r.score;

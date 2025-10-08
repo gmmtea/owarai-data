@@ -328,3 +328,140 @@ a.video-link.video-youtube{ color:#ff0033; } /* fill: currentColor */
 .nav details[open] > summary::after{
   transform: translateY(-35%) rotate(180deg); /* ▲に反転 */
 }
+
+.col-score { min-width: 56px; text-align: right; font-variant-numeric: tabular-nums; }
+.col-total { min-width: 64px; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* 審査員別得点テーブルは圧縮表示 */
+table.judge-scores { 
+  min-width: auto;                 /* まず 960px の固定を解除 */
+  width: 100%;
+}
+table.judge-scores th { 
+  white-space: normal;             /* 審査員名を改行OKに */
+  line-height: 1.25;
+}
+table.judge-scores .col-score { 
+  min-width: 48px;                 /* 少し詰める */
+  padding: 8px 8px;                /* 既定よりパディング縮小 */
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+table.judge-scores .col-total { 
+  min-width: 56px;
+  padding: 8px 8px;
+  text-align: right;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 出順は小さめ・中央/右寄せで詰める */
+table.judge-scores .col-order{
+  min-width: 48px;
+  white-space: nowrap;
+  text-align: right;               /* 数値と桁を揃える */
+  font-variant-numeric: tabular-nums;
+  padding-inline: 8px;
+}
+
+/* モバイルはもっと詰める */
+@media (max-width: 640px){
+  table.judge-scores .col-score,
+  table.judge-scores .col-total { 
+    min-width: 44px;
+    padding: 6px 6px;
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 640px){
+  table.judge-scores .col-order{ min-width: 40px; padding-inline: 6px; font-size: 14px; }
+}
+
+/* --- judge-scores を“必要な分だけの幅”で左寄せ表示 --- */
+.table-wrap.tight{
+  display: inline-block;   /* ラッパー自体が中身の幅で収まる */
+  max-width: 100%;
+  overflow: auto;          /* 収まらないときだけ横スクロール */
+  margin-inline: 0;        /* 左寄せ */
+  /* 既存の .table-wrap と同等の見た目を維持 */
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #fff;
+}
+.table-wrap.tight table{
+  width: auto;             /* 100%をやめて内容幅にする */
+  min-width: 0;            /* 以前の min-width を無効化 */
+}
+
+/* 審査員別テーブル：ヘッダーを2文字幅目安で改行可にしつつ右端を揃える */
+table.judge-scores th.col-score,
+table.judge-scores td.col-score {
+  text-align: right;               /* 数値列は右寄せ（ヘッダーも同じ） */
+  padding-inline: 8px;             /* th/tdの左右パディングを一致させる */
+}
+
+/* ヘッダーの折返し設定（日本語は文字単位で自然に折れる） */
+table.judge-scores th.col-score {
+  inline-size: 3.6em;              /* おおむね漢字2字＋余白分の幅 */
+  white-space: normal;             /* 改行を許可 */
+  overflow-wrap: anywhere;         /* 行中どこでも改行可（CJKに強い） */
+  word-break: break-word;          /* 長い語の保険 */
+  line-height: 1.25;               /* 見出しの行間をやや詰める */
+}
+
+/* 合計列も右端を揃える。やや広めに確保 */
+table.judge-scores th.col-total,
+table.judge-scores td.col-total {
+  text-align: right;
+  padding-inline: 8px;
+}
+table.judge-scores th.col-total { inline-size: 4.2em; }
+
+/* モバイルはさらに圧縮 */
+@media (max-width: 640px) {
+  table.judge-scores th.col-score   { inline-size: 3.2em; }
+  table.judge-scores th.col-total   { inline-size: 3.8em; }
+  table.judge-scores .col-score,
+  table.judge-scores .col-total     { padding-inline: 6px; font-size: 14px; }
+}
+
+/* 芸人名：狭幅では改行せず省略表示 */
+table.judge-scores .col-name .truncate{
+  display: inline-block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* スマホなど狭いときにだけ有効化。幅はお好みで微調整可 */
+@media (max-width: 720px){
+  table.judge-scores .col-name .truncate{
+    /* 表の中で取り得る最大幅を制限：8em〜20emの間で可変 */
+    max-width: clamp(8em, 40vw, 20em);
+  }
+}
+
+/* さらに極狭(<=400px)で少し厳しめに */
+@media (max-width: 400px){
+  table.judge-scores .col-name .truncate{
+    max-width: clamp(6em, 55vw, 14em);
+  }
+}
+
+/* 値の塗り背景が付くセル */
+table.judge-scores td.heat{
+  transition: background-color .15s ease-in-out;
+}
+
+/* 文字が読みにくくならないように軽くドロップ影（任意） */
+@media (prefers-contrast: no-preference){
+  table.judge-scores td.heat{
+    text-shadow: 0 1px 0 rgba(255,255,255,.25);
+  }
+}
+
+table.judge-scores th[data-sortable]{
+  user-select: none;
+  cursor: pointer;
+}

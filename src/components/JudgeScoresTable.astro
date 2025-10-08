@@ -1,0 +1,221 @@
+---
+type Seat = { seat_no: number; name: string };
+type Row  = {
+  comedian_id: string;
+  comedian_name: string;
+	comedian_reading: string | null;
+  rank_sort: number;
+  bySeat: Record<number, number|null>;
+  total: number|null;
+  order_no: number | null;
+};
+type Scale = {
+  bySeat: Record<number, { mid:number; half:number }>;
+  globalHalf: number; // 各席列の濃さ基準（両ラウンド共通）
+  total?: { mid:number; half:number }; // ← 合計列の基準（両ラウンド共通）
+};
+
+const { base, title, table, scale } = Astro.props as {
+  base: string;
+  title: string;
+  table: { seats: Seat[]; rows: Row[] } | null;
+  scale?: Scale | null;   // ← 追加: 共通スケール（任意）
+};
+
+const ok = !!table && table.seats.length > 0 && table.rows.length > 0;
+
+/** fallback: テーブル単体からのスケール計算（scale未指定時のみ使用） */
+function buildLocalScale() : Scale {
+  const bySeat: Record<number, {mid:number; half:number}> = {};
+  let globalHalf = 0;
+  for (const s of table!.seats) {
+    let min = +Infinity, max = -Infinity;
+    for (const r of table!.rows) {
+      const v = r.bySeat[s.seat_no];
+      if (typeof v === "number" && !Number.isNaN(v)) {
+        if (v < min) min = v;
+        if (v > max) max = v;
+      }
+    }
+    if (min === +Infinity) { min = 0; max = 0; }
+    const mid  = (min + max) / 2;
+    const half = Math.max(0, (max - min) / 2);
+    bySeat[s.seat_no] = { mid, half };
+    if (half > globalHalf) globalHalf = half;
+  }
+  if (globalHalf === 0) globalHalf = 1;
+  // 合計列のレンジ
+  let tmin = +Infinity, tmax = -Infinity;
+  for (const r of table!.rows) {
+    const v = r.total;
+    if (typeof v === "number" && !Number.isNaN(v)) {
+      if (v < tmin) tmin = v;
+      if (v > tmax) tmax = v;
+    }
+  }
+  const tmid  = (tmin===+Infinity) ? 0 : (tmin + tmax)/2;
+  const thalf = (tmin===+Infinity) ? 1 : Math.max(1e-9, (tmax - tmin)/2);
+  return { bySeat, globalHalf, total: { mid: tmid, half: thalf } };
+}
+
+const S = scale ?? (ok ? buildLocalScale() : { bySeat:{}, globalHalf:1 });
+
+function mixTo(color: [number,number,number], p: number): string {
+  const white = [255,255,255];
+  const q = Math.max(0, Math.min(1, p));
+  const r = Math.round(white[0] + (color[0]-white[0]) * q);
+  const g = Math.round(white[1] + (color[1]-white[1]) * q);
+  const b = Math.round(white[2] + (color[2]-white[2]) * q);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+function colorFor(score: number|undefined|null, seat_no: number): string | null {
+  if (score == null || typeof score !== "number" || Number.isNaN(score)) return null;
+  const st = S.bySeat[seat_no];
+  if (!st || st.half === 0 || S.globalHalf === 0) return null;
+
+  const delta = score - st.mid;          // 中央からの差
+  let t = delta / S.globalHalf;          // -1..1 に正規化（共通基準！）
+  t = Math.max(-1, Math.min(1, t));
+
+  const intensity = Math.abs(t);
+	const RED:  [number, number, number] = [252, 165, 165];  // red-300
+	const BLUE: [number, number, number] = [147, 197, 253];  // blue-300
+  const gain = 0.75;                     // 体感濃さ調整
+  const p = intensity * gain;
+
+  return t >= 0 ? mixTo(RED,  p) : mixTo(BLUE, p);
+}
+
+function colorForTotal(score: number|undefined|null): string | null {
+  if (!S.total) return null;
+  if (score == null || typeof score !== "number" || Number.isNaN(score)) return null;
+  const { mid, half } = S.total;
+  if (half <= 0) return null;
+  const delta = score - mid;
+  let t = delta / half;          // 合計は合計の半レンジで -1..1 に
+  t = Math.max(-1, Math.min(1, t));
+  const intensity = Math.abs(t);
+	const RED:  [number, number, number] = [252, 165, 165];  // red-300
+	const BLUE: [number, number, number] = [147, 197, 253];  // blue-300
+  const gain = 0.75;
+  const p = intensity * gain;
+  return t >= 0 ? mixTo(RED, p) : mixTo(BLUE, p);
+}
+
+const uid = Math.random().toString(36).slice(2);
+---
+{ok && (
+  <>
+    <h2>{title}</h2>
+    <div class="table-wrap tight" id={`judge-scores-${uid}`} data-judge-scores>
+      <table class="judge-scores">
+        <thead>
+          <tr>
+						<th class="col-name"  data-sortable="text"   data-key="name">芸人</th>
+						<th class="col-order" data-sortable="number" data-key="order_no">出順</th>
+						<th class="col-total" data-sortable="number" data-key="total">合計</th>
+						{table!.seats.map((s) =>
+							<th class="col-score" data-sortable="number" data-key={`seat-${s.seat_no}`}>{s.name}</th>
+						)}
+          </tr>
+        </thead>
+        <tbody>
+          {table!.rows.map((r, i) => (
+            <tr data-original-index={i}>
+              <td class="col-name"
+                  data-value-text={(r.comedian_reading ?? r.comedian_name)}>
+                <a href={`${base}co/${r.comedian_id}`} title={r.comedian_name}>
+                  <span class="truncate">{r.comedian_name}</span>
+                </a>
+              </td>
+              <td class="col-order" data-value-num={r.order_no ?? ""}>{r.order_no ?? ""}</td>
+              <td class="col-total heat" data-value-num={r.total ?? ""} style={(r.total!=null)? `background:${colorForTotal(r.total)}` : undefined}>
+                {r.total ?? ""}
+              </td>
+              {table!.seats.map((s) => {
+                const v = r.bySeat[s.seat_no] ?? null;
+                const bg = colorFor(v, s.seat_no);
+                return (
+                  <td class="col-score heat" data-value-num={v ?? ""} style={bg ? `background:${bg}` : undefined}>
+                    {v ?? ""}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+
+		<script is:inline>
+			(() => {
+				// ページ内の全 judge-scores テーブルを対象に初期化（1本目/2本目ともOK）
+				const tables = document.querySelectorAll('[data-judge-scores] table.judge-scores');
+				tables.forEach((table) => {
+					const thead = table.tHead;
+					const tbody = table.tBodies && table.tBodies[0];
+					if (!thead || !tbody) return;
+
+					const headers = Array.from(thead.querySelectorAll('th[data-sortable]'));
+					let activeKey = null; // 現在ソート中キー
+					let direction = 0;    // 0=未, -1=降順, 1=昇順
+
+					function setAria(th, state){
+						headers.forEach(h => h.removeAttribute('aria-sort'));
+						if (state !== 0) th.setAttribute('aria-sort', state === 1 ? 'ascending' : 'descending');
+					}
+
+					function compareRow(a, b, th) {
+						const type = th.getAttribute('data-sortable');
+						const idx  = headers.indexOf(th); // ヘッダー順＝セル順
+						const ca   = a.children[idx];
+						const cb   = b.children[idx];
+
+						if (type === 'number') {
+							const va = Number(ca.getAttribute('data-value-num') || '');
+							const vb = Number(cb.getAttribute('data-value-num') || '');
+							const aEmpty = Number.isNaN(va), bEmpty = Number.isNaN(vb);
+							if (aEmpty && bEmpty) return 0;
+							if (aEmpty) return 1;   // 空は最後
+							if (bEmpty) return -1;
+							return va - vb;         // 昇順（後で降順に反転）
+						} else {
+							const sa = (ca.getAttribute('data-value-text') || '').toString();
+							const sb = (cb.getAttribute('data-value-text') || '').toString();
+							if (!sa && !sb) return 0;
+							if (!sa) return 1;
+							if (!sb) return -1;
+							return sa.localeCompare(sb, 'ja', { numeric: true, sensitivity: 'base' });
+						}
+					}
+
+					headers.forEach((th) => {
+						th.style.cursor = 'pointer';
+						th.addEventListener('click', () => {
+							const key = th.getAttribute('data-key');
+
+							if (activeKey !== key) { activeKey = key; direction = -1; }  // 新しい列は降順から
+							else { direction = (direction === -1) ? 1 : (direction === 1 ? 0 : -1); }
+
+							setAria(th, direction);
+
+							const rows = Array.from(tbody.rows);
+							if (direction === 0) {
+								rows.sort((a,b) =>
+									Number(a.getAttribute('data-original-index')||'0') -
+									Number(b.getAttribute('data-original-index')||'0')
+								);
+							} else {
+								rows.sort((a,b) => compareRow(a,b,th));
+								if (direction === -1) rows.reverse();
+							}
+							rows.forEach(r => tbody.appendChild(r));
+						});
+					});
+				});
+			})();
+		</script>
+
+  </>
+)}

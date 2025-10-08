@@ -5,6 +5,7 @@ import {
   orderColumns, labelFor, MULTILINE_KEYS, normalizeCellValue,
   isTitleKey, relatedMovieKeyForTitle, colClassFor
 } from "../../lib/columns";
+import JudgeScoresTable from "../../components/JudgeScoresTable.astro";
 
 const base = import.meta.env.BASE_URL;
 
@@ -22,9 +23,58 @@ const labels: Record<string,string> = { m1:"M-1グランプリ", koc:"キング�
 // ★ 並び順を統一
 const cols = orderColumns(extraKeys);
 
-const judges = getEditionJudges(comp, Number(year));
 const round1 = getJudgeScoreTable(comp, Number(year), 1);
 const round2 = getJudgeScoreTable(comp, Number(year), 2);
+
+/** 両ラウンド合算で各席の min/max→mid/half を作り、最大 half を globalHalf に */
+function buildSharedScale(r1: typeof round1, r2: typeof round2){
+  const bySeat: Record<number, { mid:number; half:number }> = {};
+  let globalHalf = 0;
+
+  // 座席リスト（通常は同じだが、念のためユニオン）
+  const seatNos = new Set<number>();
+  for (const s of (r1?.seats ?? [])) seatNos.add(s.seat_no);
+  for (const s of (r2?.seats ?? [])) seatNos.add(s.seat_no);
+
+  for (const seat of seatNos) {
+    let min = +Infinity, max = -Infinity;
+    for (const tbl of [r1, r2]) {
+      if (!tbl) continue;
+      for (const row of tbl.rows) {
+        const v = row.bySeat[seat];
+        if (typeof v === "number" && !Number.isNaN(v)) {
+          if (v < min) min = v;
+          if (v > max) max = v;
+        }
+      }
+    }
+    if (min === +Infinity) { min = 0; max = 0; }
+    const mid  = (min + max) / 2;
+    const half = Math.max(0, (max - min) / 2);
+    bySeat[seat] = { mid, half };
+    if (half > globalHalf) globalHalf = half;
+  }
+  if (globalHalf === 0) globalHalf = 1;
+
+  // 合計列のスケール（両ラウンド合算）
+  let tmin = +Infinity, tmax = -Infinity;
+  for (const tbl of [r1, r2]) {
+    if (!tbl) continue;
+    for (const row of tbl.rows) {
+      const v = row.total;
+      if (typeof v === "number" && !Number.isNaN(v)) {
+        if (v < tmin) tmin = v;
+        if (v > tmax) tmax = v;
+      }
+    }
+  }
+  const total = (tmin===+Infinity)
+    ? { mid: 0, half: 1 }
+    : { mid: (tmin + tmax)/2, half: Math.max(1e-9, (tmax - tmin)/2) };
+  return { bySeat, globalHalf, total };
+}
+
+const sharedScale = buildSharedScale(round1, round2);
 ---
 <Base title={`${edition.competition_name} ${edition.year} 決勝結果`}>
   <nav class="breadcrumbs">
@@ -82,57 +132,8 @@ const round2 = getJudgeScoreTable(comp, Number(year), 2);
     </table>
   </div>
 
-  {round1 && round1.seats.length > 0 && (
-    <>
-      <h2>1本目 審査員別得点</h2>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>芸人</th>
-              {round1.seats.map(s => <th class="col-score">{s.name}</th>)}
-              <th class="col-total">合計</th>
-            </tr>
-          </thead>
-          <tbody>
-            {round1.rows.map(r => (
-              <tr>
-                <td><a href={`${base}co/${r.comedian_id}`}>{r.comedian_name}</a></td>
-                {round1.seats.map(s => <td class="col-score">{r.bySeat[s.seat_no] ?? ""}</td>)}
-                <td class="col-total">{r.total ?? ""}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </>
-  )}
-
-  {round2 && round2.seats.length > 0 && (
-    <>
-      <h2>2本目 審査員別得点</h2>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>芸人</th>
-              {round2.seats.map(s => <th class="col-score">{s.name}</th>)}
-              <th class="col-total">合計</th>
-            </tr>
-          </thead>
-          <tbody>
-            {round2.rows.map(r => (
-              <tr>
-                <td><a href={`${base}co/${r.comedian_id}`}>{r.comedian_name}</a></td>
-                {round2.seats.map(s => <td class="col-score">{r.bySeat[s.seat_no] ?? ""}</td>)}
-                <td class="col-total">{r.total ?? ""}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </>
-  )}
+<JudgeScoresTable base={base} title="1本目 審査員別得点" table={round1} scale={sharedScale} />
+<JudgeScoresTable base={base} title="2本目 審査員別得点" table={round2} scale={sharedScale} />
 
   <p class="muted"><a href={`${base}${comp}`}>← {edition.competition_name} 年別一覧</a> / <a href={base}>トップ</a></p>
 </Base>
