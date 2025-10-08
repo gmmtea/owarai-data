@@ -465,3 +465,22 @@ table.judge-scores th[data-sortable]{
   user-select: none;
   cursor: pointer;
 }
+
+/* 審査員別得点テーブルの縦位置を全列で中央揃えに */
+table.judge-scores th,
+table.judge-scores td {
+  vertical-align: middle;
+}
+
+/* 芸人セル内の要素を1行で中央揃え＆余計なベースライン差を排除 */
+table.judge-scores .col-name a {
+  display: inline-flex;
+  align-items: center;   /* 垂直中央 */
+  line-height: 1.5;      /* 他列と同じ程度に */
+}
+
+/* 省略記号表示に使っている truncate も行高を合わせる */
+table.judge-scores .col-name .truncate {
+  display: inline-block;
+  line-height: 1.5;
+}
