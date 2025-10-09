@@ -83,7 +83,9 @@ const sharedScale = buildSharedScale(round1, round2);
     <span>{edition.year}年</span>
   </nav>
 
-  <h1>{edition.competition_name} {edition.year} 決勝結果</h1>
+  <div class="sticky-h1">
+    <h1>{edition.competition_name} {edition.year} 決勝結果</h1>
+  </div>
   <div class="table-wrap">
     <table>
       <thead>
@@ -132,8 +134,28 @@ const sharedScale = buildSharedScale(round1, round2);
     </table>
   </div>
 
-<JudgeScoresTable base={base} title="1本目 審査員別得点" table={round1} scale={sharedScale} />
-<JudgeScoresTable base={base} title="2本目 審査員別得点" table={round2} scale={sharedScale} />
+  <JudgeScoresTable base={base} title="1本目 審査員別得点" table={round1} scale={sharedScale} />
+  <JudgeScoresTable base={base} title="2本目 審査員別得点" table={round2} scale={sharedScale} />
 
   <p class="muted"><a href={`${base}${comp}`}>← {edition.competition_name} 年別一覧</a> / <a href={base}>トップ</a></p>
 </Base>
+
+<style is:inline>
+  /* [comp]/[year] 用：h1 をヘッダーの下に固定 */
+  .sticky-h1{
+    position: sticky;
+    top: calc(var(--header-h) + var(--header-gap)); /* 固定ヘッダー分ずらす */
+    z-index: 10;          /* テーブル見出し(th: z-index:1)より上に */
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 0;
+    /* iOS Safari 対策（ほぼ不要だが保険） */
+    position: -webkit-sticky;
+  }
+
+  /* もし h1 が大きすぎて詰まるなら微調整可 */
+  .sticky-h1 h1{
+    margin: 0;            /* 余白で跳ねないように */
+    line-height: 1.3;
+  }
+</style>
