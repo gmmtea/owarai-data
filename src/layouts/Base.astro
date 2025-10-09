@@ -5,6 +5,7 @@ const { title = "お笑い主要データまとめ", description = "M-1/KOC/R-1 
 const siteTitle = "お笑い主要データまとめ";
 const base = import.meta.env.BASE_URL;
 const comps = listCompetitions(); // [{key,name,sort_order}, ...]
+const canonical = new URL(Astro.url.pathname, Astro.site).href;
 ---
 <!DOCTYPE html>
 <html lang="ja">
@@ -14,6 +15,7 @@ const comps = listCompetitions(); // [{key,name,sort_order}, ...]
     <title>{title}</title>
     <meta name="description" content={description} />
     <link rel="icon" href="/favicon.ico" />
+		<link rel="canonical" href={canonical} />
     <meta name="format-detection" content="telephone=no" />
     <!-- 共有時のOGP（必要なら調整） -->
     <meta property="og:title" content={title} />
