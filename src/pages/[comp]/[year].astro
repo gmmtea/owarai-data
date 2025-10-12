@@ -90,18 +90,18 @@ const sharedScale = buildSharedScale(round1, round2);
     <table>
       <thead>
         <tr>
-          <th class="sticky-1 col-rank">順位</th>
-          <th class="sticky-2 col-name">芸人</th>
+          <th class="sticky-1 col-name">芸人</th>
+          <th class="sticky-2 col-rank">順位</th>
           {cols.map(k => <th class={colClassFor(k)}>{labelFor(k)}</th>)}
         </tr>
       </thead>
       <tbody>
         {rows.map(r => (
           <tr>
-            <td class="sticky-1 col-rank">
+            <td class="sticky-1 col-name"><a href={`${base}co/${r.comedian_id}`}>{r.name}</a></td>
+            <td class="sticky-2 col-rank">
               <span class="badge" data-ranksort={r.rank_sort}>{r.rank}</span>
             </td>
-            <td class="sticky-2 col-name"><a href={`${base}co/${r.comedian_id}`}>{r.name}</a></td>
             {cols.map((k) => {
               const text = normalizeCellValue(k, r[k]);
               const cls  = [colClassFor(k), MULTILINE_KEYS.has(k) ? "multiline" : ""].filter(Boolean).join(" ");
