@@ -248,3 +248,15 @@ export function getJudgeScoreTable(comp: string, year: number, round_no: number)
   }
   return { seats, rows: out };
 }
+
+// 大会の開催年リスト（昇順）
+export function listEditionYears(comp: string): number[] {
+  const rows = db().prepare(`
+    select e.year
+    from editions e
+    join competitions c on c.id=e.competition_id
+    where c.key=?
+    order by e.year asc
+  `).all(comp) as { year:number }[];
+  return rows.map(r => r.year);
+}

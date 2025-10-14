@@ -1,6 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { listEditionParams, getEditionTable, getEditionJudges, getJudgeScoreTable } from "../../lib/queries";
+import { listEditionParams, getEditionTable, getEditionJudges, getJudgeScoreTable, listEditionYears } from "../../lib/queries";
 import {
   orderColumns, labelFor, MULTILINE_KEYS, normalizeCellValue,
   isTitleKey, relatedMovieKeyForTitle, colClassFor
@@ -15,7 +15,8 @@ export async function getStaticPaths() {
 }
 
 const { comp, year } = Astro.params as { comp: string; year: string };
-const data = getEditionTable(comp, Number(year));
+const y = Number(year);
+const data = getEditionTable(comp, y);
 if (!data) throw new Error("該当データなし");
 const { edition, rows, extraKeys } = data;
 const labels: Record<string,string> = { m1:"M-1グランプリ", koc:"キングオブコント", r1:"R-1グランプリ" };
@@ -23,8 +24,8 @@ const labels: Record<string,string> = { m1:"M-1グランプリ", koc:"キング�
 // ★ 並び順を統一
 const cols = orderColumns(extraKeys);
 
-const round1 = getJudgeScoreTable(comp, Number(year), 1);
-const round2 = getJudgeScoreTable(comp, Number(year), 2);
+const round1 = getJudgeScoreTable(comp, y, 1);
+const round2 = getJudgeScoreTable(comp, y, 2);
 
 /** 両ラウンド合算で各席の min/max→mid/half を作り、最大 half を globalHalf に */
 function buildSharedScale(r1: typeof round1, r2: typeof round2){
@@ -75,6 +76,12 @@ function buildSharedScale(r1: typeof round1, r2: typeof round2){
 }
 
 const sharedScale = buildSharedScale(round1, round2);
+
+// 前年・翌年を特定
+const years = listEditionYears(comp);                // 昇順
+const i = years.indexOf(y);
+const prevYear = i > 0 ? years[i-1] : null;          // 前年（存在すれば）
+const nextYear = i >= 0 && i < years.length-1 ? years[i+1] : null; // 翌年
 ---
 <Base title={`${edition.competition_name} ${edition.year} 決勝結果`}>
   <nav class="breadcrumbs">
@@ -84,8 +91,21 @@ const sharedScale = buildSharedScale(round1, round2);
   </nav>
 
   <div class="sticky-h1">
-    <h1>{edition.competition_name} {edition.year} 決勝結果</h1>
+    <div class="h1-row">
+      <h1>{edition.competition_name} {edition.year} 決勝結果</h1>
+      {(prevYear != null || nextYear != null) && (
+        <nav class="year-pager">
+          {prevYear != null && (
+            <a class="btn" href={`${base}${comp}/${prevYear}`} aria-label={`${prevYear}年へ`}>← {prevYear}年</a>
+          )}
+          {nextYear != null && (
+            <a class="btn" href={`${base}${comp}/${nextYear}`} aria-label={`${nextYear}年へ`}>{nextYear}年 →</a>
+          )}
+        </nav>
+      )}
+    </div>
   </div>
+
   <div class="table-wrap">
     <table>
       <thead>
