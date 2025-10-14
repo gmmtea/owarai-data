@@ -96,10 +96,10 @@ const nextYear = i >= 0 && i < years.length-1 ? years[i+1] : null; // 翌年
       {(prevYear != null || nextYear != null) && (
         <nav class="year-pager">
           {prevYear != null && (
-            <a class="btn" href={`${base}${comp}/${prevYear}`} aria-label={`${prevYear}年へ`}>← {prevYear}年</a>
+            <a class="btn" href={`${base}${comp}/${prevYear}`} aria-label={`${prevYear}年へ`}>← {prevYear}</a>
           )}
           {nextYear != null && (
-            <a class="btn" href={`${base}${comp}/${nextYear}`} aria-label={`${nextYear}年へ`}>{nextYear}年 →</a>
+            <a class="btn" href={`${base}${comp}/${nextYear}`} aria-label={`${nextYear}年へ`}>{nextYear} →</a>
           )}
         </nav>
       )}
