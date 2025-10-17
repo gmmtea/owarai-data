@@ -72,12 +72,17 @@ const frRows = readCsv(FR_CSV); // comp,year,comedian_name,comedian_number,...
 // 既存 comedians.csv を Map 化（key = `${name}||${number|null}`)
 const keyOf = (name, number) => `${canon(name)}||${number === null ? "null" : Number(number)}`;
 
+// 既存行そのままの並びを保持（更新はこの配列へ反映）
+const outRows = [...coRows]; // [{ name, number, reading }, ...]
+// 既存キー -> 配列インデックス
 const existing = new Map();
-for (const r of coRows) {
+
+for (let i = 0; i < coRows.length; i++) {
+  const r = coRows[i];
   const name = canon(r.name);
   const num  = r.number === "" || r.number == null ? null : Number(r.number);
   const reading = toNullable(r.reading);
-  existing.set(keyOf(name, num), { name, number: num, reading });
+  existing.set(keyOf(name, num), { index: i, name, number: num, reading });
 }
 
 // final_results の distinct (name, number) を走査
@@ -100,7 +105,14 @@ for (const r of frRows) {
       reading = stripSymbolsForReading(hira);
       if (reading === "") reading = null;
     }
-    existing.set(k, { name, number: num, reading });
+    // 末尾に追記（新規は一番下へ）
+    const newIndex = outRows.length;
+    outRows.push({
+      name, 
+      number: num == null ? "" : String(num),
+      reading: reading ?? ""
+    });
+    existing.set(k, { index: newIndex, name, number: num, reading });
     inserted++;
   } else {
     // 既存で reading が空なら自動補完を試みる
@@ -109,29 +121,23 @@ for (const r of frRows) {
       let guess = stripSymbolsForReading(hira);
       if (guess === "") guess = null;
       if (guess) {
-        row.reading = guess;
+        row.reading = guess; // Map側のメモ
+        // 実体（配列）も更新
+        const i = row.index;
+        if (i != null && outRows[i]) {
+          outRows[i] = {
+            ...outRows[i],
+            reading: guess
+          };
+        }
         readingUpdated++;
       }
     }
   }
 }
 
-// 出力（安定した順序：name 昇順 → number 昇順(null→先頭)）
-const out = Array.from(existing.values()).sort((a, b) => {
-  const na = a.name.localeCompare(b.name, "ja");
-  if (na !== 0) return na;
-  if (a.number === null && b.number !== null) return -1;
-  if (a.number !== null && b.number === null) return 1;
-  if (a.number === null && b.number === null) return 0;
-  return Number(a.number) - Number(b.number);
-});
-
-// CSV ヘッダ: name,number,reading（既存に合わせる）
+// 出力：読み込んだ順 + 追記分（並べ替えなし）
 const header = ["name", "number", "reading"];
-writeCsv(CO_CSV, out.map(r => ({
-  name: r.name,
-  number: r.number == null ? "" : String(r.number),
-  reading: r.reading ?? "",
-})), header);
+writeCsv(CO_CSV, outRows, header);
 
-console.log(`sync-comedians-csv: inserted=${inserted}, reading_filled=${readingUpdated}, total=${out.length}`);
+console.log(`sync-comedians-csv: inserted=${inserted}, reading_filled=${readingUpdated}, total=${outRows.length}`);

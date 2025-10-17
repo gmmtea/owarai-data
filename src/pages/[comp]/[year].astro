@@ -86,7 +86,7 @@ const nextYear = i >= 0 && i < years.length-1 ? years[i+1] : null; // 翌年
 <Base title={`${edition.competition_name} ${edition.year} 決勝結果`}>
   <nav class="breadcrumbs">
     <a href={base}>トップ</a><span class="sep">/</span>
-    <a href={`${base}${comp}`}>{labels[comp]}</a><span class="sep">/</span>
+    <a href={`${base}${comp}`}>{edition.competition_name}</a><span class="sep">/</span>
     <span>{edition.year}年</span>
   </nav>
 

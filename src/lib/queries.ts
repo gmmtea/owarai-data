@@ -57,12 +57,21 @@ export function getEditionTable(comp: string, year: number) {
   const extras = finalResultExtraColumns();
   const selectExtras = extras.map(k => `fr."${k}" as "${k}"`).join(", ");
   const sql = `
-    select fr.rank, fr.rank_sort, co.id as comedian_id, co.name
+    select
+      fr.rank,
+      fr.rank_sort,
+      co.id as comedian_id,
+      co.name,
+      CAST(fr.first_order AS INTEGER) AS __ord1
       ${selectExtras ? ","+selectExtras : ""}
     from final_results fr
     join comedians co on co.id=fr.comedian_id
     where fr.edition_id=?
-    order by CAST(fr.rank_sort AS INTEGER) asc, co.name asc
+    order by
+      CAST(fr.rank_sort AS INTEGER) asc,   -- 1) 順位（数値化）
+      (__ord1 is null) asc,                -- 2) 出順がある行を先に
+      __ord1 asc,                          -- 3) 1本目出順 昇順
+      co.name asc                          -- 4) 最後の安定化
   `;
   const rows = db().prepare(sql).all(ed.edition_id) as any[];
 
