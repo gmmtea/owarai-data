@@ -220,7 +220,7 @@ a:focus, button:focus, [tabindex]:focus{
 /* --- wide table + sticky first column + compact numeric cols --- */
 
 /* 横スクロールを許可（既に .table-wrap はあるが最小幅を強める） */
-.table-wrap table { min-width: 960px; }
+/* .table-wrap table { min-width: 960px; } */
 
 /* ヘッダは折返しにくくする */
 .table-wrap th { white-space: nowrap; }
