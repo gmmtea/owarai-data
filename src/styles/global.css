@@ -1,158 +1,282 @@
-:root{
-  --header-h: 56px; /* ヘッダーの高さを変数化 */
-  --header-gap: 12px; /* ひと呼吸分 */
+/* ========================================================================
+   global.css (整理版)
+   目的:
+     - トークン一元化（色・間隔・角丸・幅）
+     - レイアウト/コンポーネント/ユーティリティの階層化
+     - 特異性を下げて上書きしやすく（:where() の活用）
+     - 可読性向上のため日本語コメントを多数付与
+   注意:
+     - 既存の見た目・挙動を極力維持
+     - 数値は常に半角
+   ======================================================================== */
 
-  /* 基本色 */
+/* ========== 1) Design Tokens: CSSカスタムプロパティ（サイト全体の定義） ========== */
+:root{
+  /* レイアウト寸法 */
+  --header-h: 56px;     /* 固定ヘッダーの高さ */
+  --header-gap: 12px;   /* ヘッダー下の余白（“ひと呼吸”） */
+  --container: 960px;   /* メインの最大幅 */
+  --radius: 12px;       /* 角丸の既定 */
+
+  /* ベース色 */
   --bg:#ffffff;
   --text:#111111;
-  --muted:#6b7280;
+  --muted:#64748b;
   --border:#e6e6e6;
 
-  /* ブランド軸（黒×オレンジ） */
-  --brand:#111111;                 /* ヘッダー等の黒 */
-  --brand-contrast:#ffffff;        /* 黒地に載せる文字色 */
-  --accent:#f97316;                /* オレンジ(500) */
-  --accent-strong:#ea580c;         /* オレンジ(600) */
-  --accent-weak:#fff3e6;           /* 薄いオレンジ背景 */
+  /* ブランド（黒×オレンジ） */
+  --brand:#111111;          /* ヘッダー等の黒 */
+  --brand-contrast:#ffffff; /* 黒地に載せる文字色 */
+  --accent:#f97316;         /* オレンジ(500) */
+  --accent-strong:#ea580c;  /* オレンジ(600) */
+  --accent-weak:#fff3e6;    /* 薄いオレンジ背景 */
 
-  --container: 960px;
-  --radius: 12px;
+  /* メダル色（グラデ用に2色＋枠） */
+  --gold-1:#fff3b0;   --gold-2:#f7c84b;   --gold-border:#e6b23e;
+  --silver-1:#f3f4f6; --silver-2:#d1d5db; --silver-border:#c6cbd1;
+  --bronze-1:#f2c1a3; --bronze-2:#d99572; --bronze-border:#b77a5e;
 
-  /* メタル色 */
-  --gold-1:#fff3b0;  --gold-2:#f7c84b;  --gold-border:#e6b23e;
-  --silver-1:#f3f4f6;--silver-2:#d1d5db;--silver-border:#c6cbd1;
-  --bronze-1:#f2c1a3;--bronze-2:#d99572;--bronze-border:#b77a5e;
-
-  --stage-sf:#6b21a8;  /* 準決勝：violet 800（紫） */
-  --stage-qf:#1e40af;  /* 準々決勝：indigo 800（藍） */
-  --stage-r3:#166534;  /* 3回戦：deep green 700（森林） */
-  --stage-r2:#64748b;  /* 2回戦：slate 500（灰青） */
-  --stage-r1:#475569;  /* 1回戦：slate 600（やや濃い灰青） */
+  /* ステージ色（バッジの段階着色で使用） */
+  --stage-sf:#6b21a8;  /* 準決勝 violet-800 */
+  --stage-qf:#1e40af;  /* 準々決勝 indigo-800 */
+  --stage-r3:#166534;  /* 3回戦 deep-green-700 */
+  --stage-r2:#64748b;  /* 2回戦 slate-500 */
+  --stage-r1:#475569;  /* 1回戦 slate-600 */
 }
 
-*{box-sizing: border-box}
-html,body{height:100%}
+/* ========== 2) Reset & Base: 最低限の初期化と本文設定 ========== */
+*{ box-sizing: border-box }
+html,body{ height:100% }
+
 body{
-  margin:0; background:var(--bg); color:var(--text);
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", "Meiryo", sans-serif;
-  line-height:1.65; font-size:16px;
+  font-size:16px;
+  line-height:1.65;
+
+  /* 固定ヘッダーの下に本文を押し下げる */
+  padding-top: calc(var(--header-h) + var(--header-gap));
 }
-a{color:var(--accent); text-decoration:none}
-a:hover{color:var(--accent-strong); text-decoration:underline}
-.muted{color:var(--muted)}
 
-.container{max-width:var(--container); margin-inline:auto; padding:16px}
-.content{padding-block:24px}
+/* アクセシビリティ: コントラストを自動最適化するブラウザにヒント */
+:root{ color-scheme: light; }
 
+/* リンクの既定（ホバーで強調） */
+a{
+  color:var(--accent);
+  text-decoration:none;
+}
+a:hover{
+  color:var(--accent-strong);
+  text-decoration:underline;
+}
+
+/* 選択色・フォーカス（視認性を高く） */
+::selection{ background:var(--accent); color:#fff }
+a:focus, button:focus, [tabindex]:focus{
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius:6px;
+}
+
+/* ベーシック余白・見出し（必要最小限） */
+h1{ font-size:24px; margin:0 0 12px }
+h2{ font-size:20px; margin:28px 0 8px }
+p{ margin:8px 0 }
+
+/* サブテキスト（補助説明など） */
+.muted{ color:var(--muted) }
+
+/* ========== 3) Layout: コンテナー/ヘッダー/フッター/ナビ ========== */
+
+/* コンテナー：左右中央寄せ＋左右パディング */
+.container{
+  max-width:var(--container);
+  margin-inline:auto;
+  padding:16px;
+}
+
+/* セクション上下の余白 */
+.content{ padding-block:24px }
+
+/* 固定ヘッダー（透過+ブラー） */
 .site-header{
   position: fixed;
-  top: 0; left: 0; right: 0;
+  inset: 0 0 auto 0;                 /* top:0; left:0; right:0; と同義 */
   z-index: 1000;
   backdrop-filter: saturate(180%) blur(6px);
   background: var(--brand);
-  border-bottom: 1px solid var(--border); /* 任意：境界線で区切り */
-}
-.brand{font-weight:700; font-size:18px; color:var(--brand-contrast)}
-.nav a{
-  color:var(--brand-contrast);
-  padding:8px 10px; border-radius:8px; opacity:.9
-}
-.nav a:hover{
-  background: color-mix(in srgb, var(--accent) 20%, transparent);
-  text-decoration:none; opacity:1
+  border-bottom: 1px solid var(--border); /* 薄く区切り */
 }
 
+/* ヘッダ内の行配置 */
 .header-row{
-  display: flex; align-items: center; gap: 16px; justify-content: space-between;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   min-height: var(--header-h);
 }
 
-/* 本文をヘッダーの高さ＋αだけ下げる */
-body{ padding-top: calc(var(--header-h) + var(--header-gap)); }
+/* サイト名 */
+.brand{
+  font-weight:700;
+  font-size:18px;
+  color:var(--brand-contrast);
+}
 
-/* ナビ内のリンクも横並び＆間隔 */
+/* ナビ（横並び） */
 .nav{
   display:flex;
   gap:8px;
 }
+.nav a{
+  color:var(--brand-contrast);
+  padding:8px 10px;
+  border-radius:8px;
+  opacity:.9;
+}
+.nav a:hover{
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  text-decoration:none;
+  opacity:1;
+}
 
-.site-footer{border-top:1px solid var(--border); padding:24px 0; margin-top:48px}
+/* フッター */
+.site-footer{
+  border-top:1px solid var(--border);
+  padding:24px 0;
+  margin-top:48px;
+}
 
+/* スキップリンク（キーボード利用者向け） */
 .skip{
-  position:absolute; left:-9999px; top:auto; width:1px; height:1px; overflow:hidden;
+  position:absolute;
+  left:-9999px; top:auto;
+  width:1px; height:1px;
+  overflow:hidden;
 }
-.skip:focus{position:static; width:auto; height:auto; padding:8px; background:#fff; border:1px solid var(--border)}
+.skip:focus{
+  position:static;
+  width:auto; height:auto;
+  padding:8px;
+  background:#fff;
+  border:1px solid var(--border);
+}
 
-h1{font-size:24px; margin:0 0 12px}
-h2{font-size:20px; margin:28px 0 8px}
-p{margin:8px 0}
+/* パンくず（区切りは薄色） */
+.breadcrumbs{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  font-size:14px;
+  margin-bottom:12px;
+}
+.breadcrumbs a{ color:inherit }
+.breadcrumbs .sep{ color:var(--muted) }
 
+/* ========== 4) Components: カード/テーブル/バッジ/動画リンク等 ========== */
+
+/* カード */
 .card{
-  border:1px solid var(--border); border-radius:var(--radius); padding:16px; background:#fff;
-}
-
-/* テーブル */
-.table-wrap{
-  overflow:auto;
+  background:#fff;
   border:1px solid var(--border);
   border-radius:var(--radius);
+  padding:16px;
+}
+
+/* テーブル（共通） */
+.table-wrap{
+  overflow:auto;
   background:#fff;
+  border:1px solid var(--border);
+  border-radius:var(--radius);
 }
 table{
   width:100%;
+  min-width:560px;                   /* 横スクロール前提の最低幅 */
   border-collapse:collapse;
-  min-width:560px;
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: tabular-nums;/* 桁揃え */
 }
-th,td{padding:10px 12px; border-bottom:1px solid var(--border); text-align:left}
+th,td{
+  padding:10px 12px;
+  border-bottom:1px solid var(--border);
+  text-align:left;
+  vertical-align: middle;            /* 全列を中央寄せ（上下） */
+}
+/* ヘッダーは固定（スクロール時に上部に残す） */
 thead th{
   position:sticky; top:0;
-  background:var(--brand); color:var(--brand-contrast);
-  z-index:1
+  background:var(--brand);
+  color:var(--brand-contrast);
+  z-index:1;
+  white-space: nowrap;               /* 折返し防止（長すぎる場合は個別調整） */
 }
-th.spacer, td.spacer { width:100%; padding:0; border-bottom:none; }
-tbody tr:hover{background:#fff8f1} /* 薄いオレンジで行ホバー */
-
-/* 改行(\n)を行として表示 */
-.multiline{
-  white-space: pre-line; /* \n を改行として描画、連続スペースは折り畳み */
+/* 余白列（可変幅スペーサ） */
+th.spacer, td.spacer{
+  width:100%; padding:0; border-bottom:none;
 }
+/* 行ホバー（薄オレンジ） */
+tbody tr:hover{ background:#fff8f1 }
 
-/* バッジ（優勝など） */
-.badge{
-  display: inline-block;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 1rem;
-  line-height: 1.5;
-  border: 1px solid var(--border);
-  background: #fff;
+/* 1列目を固定（年・順位など先頭セル） */
+.table-wrap :is(th.sticky-1, td.sticky-1){
+  position: sticky;
+  left: 0;
+  z-index: 2;
+}
+.table-wrap th.sticky-1{ background: var(--brand); color: var(--brand-contrast) }
+.table-wrap td.sticky-1{ background: #fff }
+
+/* 列の幅・整列（必要に応じて追加） */
+.col-year   { min-width: 60px }
+.col-rank   {
+  min-width: 60px;
+  width: 1%;                 /* 自動レイアウトで最小幅に寄せる */
   white-space: nowrap;
+  padding-right: 6px;
+}
+.col-name   { min-width: 160px }
+.col-catch  { min-width: 200px }
+.col-order  { min-width: 60px }
+.col-result { min-width: 60px }
+.col-title  { min-width: 160px }
+.col-score  { min-width: 56px; text-align: right; font-variant-numeric: tabular-nums }
+.col-total  { min-width: 64px; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums }
+
+/* 改行(\n)を行として表示（プレーンテキストの複数行表示に） */
+.multiline{ white-space: pre-line }
+
+/* バッジ（順位・ステージなど） */
+.badge{
+  display:inline-block;
+  padding:4px 10px;
+  border-radius:999px;
+  font-size:1rem;
+  line-height:1.5;
+  background:#fff;
+  border:1px solid var(--border);
+  white-space:nowrap;
   font-variant-numeric: tabular-nums;
 }
 
-/* 1位（金） */
+/* 1位〜3位：メダル調のグラデ */
 .badge[data-ranksort="1"]{
   background: linear-gradient(135deg, var(--gold-1), var(--gold-2));
-  color:#111;
-  border-color: var(--gold-border);
+  color:#111; border-color: var(--gold-border);
 }
-
-/* 2位（銀） */
 .badge[data-ranksort="2"]{
   background: linear-gradient(135deg, var(--silver-1), var(--silver-2));
-  color:#111;
-  border-color: var(--silver-border);
+  color:#111; border-color: var(--silver-border);
 }
-
-/* 3位（銅） */
 .badge[data-ranksort="3"]{
   background: linear-gradient(135deg, var(--bronze-1), var(--bronze-2));
-  color:#111;
-  border-color: var(--bronze-border);
+  color:#111; border-color: var(--bronze-border);
 }
 
-/* 4〜10位：ブランドのオレンジを段階的に薄く（背景＝薄いオレンジ、枠は少し濃い）*/
+/* 4〜12位：オレンジの濃度を段階化（背景=薄/枠=やや濃） */
 .badge[data-ranksort="4"] {  background: color-mix(in srgb, var(--accent) 40%, #fff); border-color: color-mix(in srgb, var(--accent) 60%, #fff); color:#111 }
 .badge[data-ranksort="5"] {  background: color-mix(in srgb, var(--accent) 38%, #fff); border-color: color-mix(in srgb, var(--accent) 58%, #fff); color:#111 }
 .badge[data-ranksort="6"] {  background: color-mix(in srgb, var(--accent) 36%, #fff); border-color: color-mix(in srgb, var(--accent) 56%, #fff); color:#111 }
@@ -162,158 +286,60 @@ tbody tr:hover{background:#fff8f1} /* 薄いオレンジで行ホバー */
 .badge[data-ranksort="10"]{  background: color-mix(in srgb, var(--accent) 28%, #fff); border-color: color-mix(in srgb, var(--accent) 48%, #fff); color:#111 }
 .badge[data-ranksort="11"]{  background: color-mix(in srgb, var(--accent) 26%, #fff); border-color: color-mix(in srgb, var(--accent) 46%, #fff); color:#111 }
 .badge[data-ranksort="12"]{  background: color-mix(in srgb, var(--accent) 24%, #fff); border-color: color-mix(in srgb, var(--accent) 44%, #fff); color:#111 }
-                                                                                   /*   border-color: color-mix(in srgb, var(--stage-sf) 28%, #fff); */
-/* 準決勝=50（10位=12%より下の 10%） */
-.badge[data-ranksort="50"]{
-  background: color-mix(in srgb, var(--stage-sf) 10%, #fff);
-  border-color: color-mix(in srgb, var(--stage-sf) 28%, #fff);
-  color:#111;
-}
-/* 準々=100 */
-.badge[data-ranksort="100"]{
-  background: color-mix(in srgb, var(--stage-qf) 9%, #fff);
-  border-color: color-mix(in srgb, var(--stage-qf) 26%, #fff);
-  color:#111;
-}
-/* 3回戦=500 */
-.badge[data-ranksort="500"]{
-  background: color-mix(in srgb, var(--stage-r3) 8%, #fff);
-  border-color: color-mix(in srgb, var(--stage-r3) 24%, #fff);
-  color:#111;
-}
-/* 2回戦=1000 */
-.badge[data-ranksort="1000"]{
-  background: color-mix(in srgb, var(--stage-r2) 7%, #fff);
-  border-color: color-mix(in srgb, var(--stage-r2) 22%, #fff);
-  color:#111;
-}
-/* 1回戦=5000 */
-.badge[data-ranksort="5000"]{
-  background: color-mix(in srgb, var(--stage-r1) 6%, #fff);
-  border-color: color-mix(in srgb, var(--stage-r1) 20%, #fff);
-  color:#111;
-}
 
-/* 非数値ラベルや棄権等（rank_sort=99999想定）はグレーで控えめに */
+/* ステージ（rank_sort=50/100/…） */
+.badge[data-ranksort="50"]{   background: color-mix(in srgb, var(--stage-sf) 10%, #fff);  border-color: color-mix(in srgb, var(--stage-sf) 28%, #fff);  color:#111 }
+.badge[data-ranksort="100"]{  background: color-mix(in srgb, var(--stage-qf) 9%, #fff);   border-color: color-mix(in srgb, var(--stage-qf) 26%, #fff); color:#111 }
+.badge[data-ranksort="500"]{  background: color-mix(in srgb, var(--stage-r3) 8%, #fff);   border-color: color-mix(in srgb, var(--stage-r3) 24%, #fff); color:#111 }
+.badge[data-ranksort="1000"]{ background: color-mix(in srgb, var(--stage-r2) 7%, #fff);   border-color: color-mix(in srgb, var(--stage-r2) 22%, #fff); color:#111 }
+.badge[data-ranksort="5000"]{ background: color-mix(in srgb, var(--stage-r1) 6%, #fff);   border-color: color-mix(in srgb, var(--stage-r1) 20%, #fff); color:#111 }
+
+/* 非数値・棄権など（99999想定） */
 .badge[data-ranksort="99999"]{
   color: var(--muted);
   background:#fff;
   border-color: var(--border);
 }
 
-/* パンくず */
-.breadcrumbs{display:flex; gap:8px; align-items:center; font-size:14px; margin-bottom:12px}
-.breadcrumbs a{color:inherit}
-.breadcrumbs .sep{color:var(--muted)}
-
-/* 小要素 */
-.kv{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
-
-/* 選択色＆フォーカス */
-::selection{background:var(--accent); color:#fff}
-a:focus, button:focus, [tabindex]:focus{
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  border-radius:6px;
-}
-
-/* --- wide table + sticky first column + compact numeric cols --- */
-
-/* 横スクロールを許可（既に .table-wrap はあるが最小幅を強める） */
-/* .table-wrap table { min-width: 960px; } */
-
-/* ヘッダは折返しにくくする */
-.table-wrap th { white-space: nowrap; }
-
-/* 1列目を固定（年・順位など先頭セル用） */
-.table-wrap th.sticky-1,
-.table-wrap td.sticky-1 {
-  position: sticky;
-  left: 0;
-  z-index: 2;
-}
-.table-wrap th.sticky-1 { background: var(--brand); color: var(--brand-contrast); }
-.table-wrap td.sticky-1 { background: #fff; }
-
-/* 列の幅・整列（必要に応じて微調整） */
-.col-year   { min-width: 60px;  } /* 年 */
-/* .col-rank   { min-width: 60px;  } 順位 */
-.col-rank { 
-  min-width: 60px;
-  width: 1%;         /* テーブルの自動レイアウトで最小化 */
-  white-space: nowrap;
-  padding-right: 6px;
-}
-.col-name   { min-width: 160px; } /* 芸人名 */
-.col-catch  { min-width: 200px; } /* キャッチコピー */
-.col-order  { min-width: 60px;  } /* 出順 */
-.col-result { min-width: 60px;  } /* 結果 */
-.col-title  { min-width: 160px; } /* ネタ */
-
-/* --- video icon link --- */
+/* 動画リンク（YouTubeアイコン等を隣接表示） */
 a.video-link{
-  display:inline-block;        /* 行内要素化（ベースラインを持つ） */
-  vertical-align:-0.12em;      /* 微調整（環境で±0.02em調整可） */
+  display:inline-block;      /* ベースラインを確保 */
+  vertical-align:-0.12em;    /* 行中でアイコンを文字と揃える微調整 */
   line-height:1;
-  margin-left:0.25em;          /* 「半角スペース」相当の余白を安定させる */
-  border-radius:6px;           /* 既存のホバー背景に合わせて残すなら可 */
+  margin-left:0.25em;        /* 半角スペース相当の余白 */
+  border-radius:6px;
   text-decoration:none;
 }
-
 a.video-link:hover{
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
-
 a.video-link svg{
-  width:1.05em;                /* 文字サイズに追随 */
-  height:1.05em;
-  display:block;               /* 行ボックスの余白を消す */
+  width:1.05em; height:1.05em; display:block; /* 文字サイズに追随＋余白除去 */
 }
+/* YouTubeカラー（必要に応じ調整） */
+a.video-link.video-youtube{ color:#ff0033 }
 
-/* YouTubeカラー（必要なら好みで調整可） */
-a.video-link.video-youtube{ color:#ff0033; } /* fill: currentColor */
+/* key-value 的な小要素並び */
+.kv{ display:flex; align-items:center; gap:8px; flex-wrap:wrap }
 
-.reading{ margin:-4px 0 8px; font-size:14px; }
-
-/* --- dropdown menu for "大会" --- */
-.nav details.menu{ position:relative; }
+/* ========== 5) Menus: ナビのドロップダウン（details/summary） ========== */
+.nav details.menu{ position:relative }
 .nav details.menu > summary{
   list-style:none; cursor:pointer;
   color:var(--brand-contrast);
-  padding:8px 10px; border-radius:8px; opacity:.9;
+  padding:8px 10px;
+  border-radius:8px;
+  opacity:.9;
+  position: relative;
+  padding-right: 22px; /* ▼アイコン分の余白 */
 }
-.nav details.menu > summary::-webkit-details-marker{ display:none; }
+.nav details.menu > summary::-webkit-details-marker{ display:none }
 .nav details[open] > summary{
   background: color-mix(in srgb, var(--accent) 20%, transparent);
   opacity:1;
 }
-.nav .menu-list{
-  position:absolute; left:0; top:calc(100% + 6px);
-  margin:0; padding:6px;
-  background:#fff; color:var(--text);
-  border:1px solid var(--border); border-radius:10px;
-  min-width:180px; box-shadow:0 6px 24px rgba(0,0,0,.12);
-  z-index:1001; /* ヘッダー上に */
-}
-.nav .menu-list li{ list-style:none; }
-.nav .menu-list a{
-  display:block; padding:8px 10px; border-radius:8px; color:inherit;
-}
-.nav .menu-list a:hover{
-  background: color-mix(in srgb, var(--accent) 12%, #fff);
-  text-decoration:none;
-}
 
-/* モバイル：タップしやすく、はみ出しを防ぐ */
-@media (max-width: 640px){
-  .nav .menu-list{ min-width: 160px; }
-}
-
-/* ▼アイコンをsummaryの右端に表示・開閉で回転 */
-.nav details.menu > summary{
-  position: relative;
-  padding-right: 22px; /* アイコンぶん余白 */
-}
+/* ▼マーカー（開閉で回転） */
 .nav details.menu > summary::after{
   content: "";
   position: absolute; right: 8px; top: 50%;
@@ -321,172 +347,144 @@ a.video-link.video-youtube{ color:#ff0033; } /* fill: currentColor */
   border-left: 5px solid transparent;
   border-right:5px solid transparent;
   border-top: 6px solid currentColor; /* ▼ */
-  transform: translateY(-35%);        /* ベースライン微調整 */
+  transform: translateY(-35%);
   opacity: .85;
   transition: transform .15s ease;
 }
 .nav details[open] > summary::after{
-  transform: translateY(-35%) rotate(180deg); /* ▲に反転 */
+  transform: translateY(-35%) rotate(180deg); /* ▲ */
 }
 
-.col-score { min-width: 56px; text-align: right; font-variant-numeric: tabular-nums; }
-.col-total { min-width: 64px; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
-
-/* 審査員別得点テーブルは圧縮表示 */
-table.judge-scores { 
-  min-width: auto;                 /* まず 960px の固定を解除 */
-  width: 100%;
+/* メニュー本体 */
+.nav .menu-list{
+  position:absolute;
+  left:0; top:calc(100% + 6px);
+  z-index:1001;                     /* ヘッダー上に重ねる */
+  min-width:180px;
+  margin:0; padding:6px;
+  background:#fff; color:var(--text);
+  border:1px solid var(--border);
+  border-radius:10px;
+  box-shadow:0 6px 24px rgba(0,0,0,.12);
 }
-table.judge-scores th { 
-  white-space: normal;             /* 審査員名を改行OKに */
-  line-height: 1.25;
+.nav .menu-list li{ list-style:none }
+.nav .menu-list a{
+  display:block;
+  padding:8px 10px;
+  border-radius:8px;
+  color:inherit;
+  text-decoration:none;
 }
-table.judge-scores .col-score { 
-  min-width: 48px;                 /* 少し詰める */
-  padding: 8px 8px;                /* 既定よりパディング縮小 */
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-table.judge-scores .col-total { 
-  min-width: 56px;
-  padding: 8px 8px;
-  text-align: right;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
+.nav .menu-list a:hover{
+  background: color-mix(in srgb, var(--accent) 12%, #fff);
 }
 
-/* 出順は小さめ・中央/右寄せで詰める */
-table.judge-scores .col-order{
-  min-width: 48px;
-  white-space: nowrap;
-  text-align: right;               /* 数値と桁を揃える */
-  font-variant-numeric: tabular-nums;
-  padding-inline: 8px;
-}
-
-/* モバイルはもっと詰める */
+/* モバイル幅での最小幅調整 */
 @media (max-width: 640px){
-  table.judge-scores .col-score,
-  table.judge-scores .col-total { 
-    min-width: 44px;
-    padding: 6px 6px;
-    font-size: 14px;
-  }
+  .nav .menu-list{ min-width: 160px }
 }
 
-@media (max-width: 640px){
-  table.judge-scores .col-order{ min-width: 40px; padding-inline: 6px; font-size: 14px; }
-}
+/* ========== 6) Judge Scores: 審査員別得点テーブルの圧縮表示 ========== */
 
-/* --- judge-scores を“必要な分だけの幅”で左寄せ表示 --- */
+/* 幅を“必要な分だけ”に制御したい場合のラッパー */
 .table-wrap.tight{
-  display: inline-block;   /* ラッパー自体が中身の幅で収まる */
-  max-width: 100%;
-  overflow: auto;          /* 収まらないときだけ横スクロール */
-  margin-inline: 0;        /* 左寄せ */
-  /* 既存の .table-wrap と同等の見た目を維持 */
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: #fff;
+  display:inline-block;  /* 中身の幅に合わせる */
+  max-width:100%;
+  overflow:auto;         /* 溢れたら横スクロール */
+  margin-inline:0;
+  background:#fff;
+  border:1px solid var(--border);
+  border-radius:var(--radius);
 }
 .table-wrap.tight table{
-  width: auto;             /* 100%をやめて内容幅にする */
-  min-width: 0;            /* 以前の min-width を無効化 */
+  width:auto;            /* 100%を解除して内容幅に */
+  min-width:0;           /* 以前の min-width を打ち消す */
 }
 
-/* 審査員別テーブル：ヘッダーを2文字幅目安で改行可にしつつ右端を揃える */
+/* 審査員名ヘッダは改行可・狭幅 */
+table.judge-scores{
+  width:100%;
+  min-width:auto;        /* 960pxなどの固定を解除 */
+}
+table.judge-scores th{
+  line-height:1.25;
+  white-space:normal;    /* 日本語は自然折返し */
+}
 table.judge-scores th.col-score,
-table.judge-scores td.col-score {
-  text-align: right;               /* 数値列は右寄せ（ヘッダーも同じ） */
-  padding-inline: 8px;             /* th/tdの左右パディングを一致させる */
+table.judge-scores td.col-score{
+  text-align:right;
+  padding-inline:8px;
 }
-
-/* ヘッダーの折返し設定（日本語は文字単位で自然に折れる） */
-table.judge-scores th.col-score {
-  inline-size: 3.6em;              /* おおむね漢字2字＋余白分の幅 */
-  white-space: normal;             /* 改行を許可 */
-  overflow-wrap: anywhere;         /* 行中どこでも改行可（CJKに強い） */
-  word-break: break-word;          /* 長い語の保険 */
-  line-height: 1.25;               /* 見出しの行間をやや詰める */
+table.judge-scores th.col-score{
+  inline-size:3.6em;           /* 漢字2字＋余白程度 */
+  overflow-wrap:anywhere;
+  word-break:break-word;
 }
-
-/* 合計列も右端を揃える。やや広めに確保 */
 table.judge-scores th.col-total,
-table.judge-scores td.col-total {
-  text-align: right;
-  padding-inline: 8px;
+table.judge-scores td.col-total{
+  text-align:right;
+  padding-inline:8px;
 }
-table.judge-scores th.col-total { inline-size: 4.2em; }
+table.judge-scores th.col-total{ inline-size:4.2em }
 
-/* モバイルはさらに圧縮 */
-@media (max-width: 640px) {
-  table.judge-scores th.col-score   { inline-size: 3.2em; }
-  table.judge-scores th.col-total   { inline-size: 3.8em; }
-  table.judge-scores .col-score,
-  table.judge-scores .col-total     { padding-inline: 6px; font-size: 14px; }
+/* 出順は小さめ・右寄せで桁揃え */
+table.judge-scores .col-order{
+  min-width:48px;
+  white-space:nowrap;
+  text-align:right;
+  font-variant-numeric: tabular-nums;
+  padding-inline:8px;
 }
 
-/* 芸人名：狭幅では改行せず省略表示 */
+/* 芸人名は狭幅時のみ省略表示（.truncate を内包） */
+table.judge-scores .col-name a{
+  display:inline-flex;
+  align-items:center;
+  line-height:1.5;
+}
 table.judge-scores .col-name .truncate{
-  display: inline-block;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display:inline-block;
+  line-height:1.5;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
 }
 
-/* スマホなど狭いときにだけ有効化。幅はお好みで微調整可 */
-@media (max-width: 720px){
-  table.judge-scores .col-name .truncate{
-    /* 表の中で取り得る最大幅を制限：8em〜20emの間で可変 */
-    max-width: clamp(8em, 40vw, 20em);
+/* スマホでさらに圧縮 */
+@media (max-width: 640px){
+  table.judge-scores .col-score,
+  table.judge-scores .col-total{
+    min-width:44px;
+    padding:6px 6px;
+    font-size:14px;
   }
-}
-
-/* さらに極狭(<=400px)で少し厳しめに */
-@media (max-width: 400px){
-  table.judge-scores .col-name .truncate{
-    max-width: clamp(6em, 55vw, 14em);
+  table.judge-scores .col-order{
+    min-width:40px;
+    padding-inline:6px;
+    font-size:14px;
   }
+  table.judge-scores th.col-score{ inline-size:3.2em }
+  table.judge-scores th.col-total{ inline-size:3.8em }
 }
 
-/* 値の塗り背景が付くセル */
+/* 色の“熱マップ”セル（フェードあり） */
 table.judge-scores td.heat{
   transition: background-color .15s ease-in-out;
 }
-
-/* 文字が読みにくくならないように軽くドロップ影（任意） */
+/* 低コントラスト環境以外で軽く読みやすくする */
 @media (prefers-contrast: no-preference){
   table.judge-scores td.heat{
     text-shadow: 0 1px 0 rgba(255,255,255,.25);
   }
 }
 
+/* ソート可能見出しのUIヒント */
 table.judge-scores th[data-sortable]{
-  user-select: none;
-  cursor: pointer;
+  user-select:none;
+  cursor:pointer;
 }
 
-/* 審査員別得点テーブルの縦位置を全列で中央揃えに */
-table.judge-scores th,
-table.judge-scores td {
-  vertical-align: middle;
-}
-
-/* 芸人セル内の要素を1行で中央揃え＆余計なベースライン差を排除 */
-table.judge-scores .col-name a {
-  display: inline-flex;
-  align-items: center;   /* 垂直中央 */
-  line-height: 1.5;      /* 他列と同じ程度に */
-}
-
-/* 省略記号表示に使っている truncate も行高を合わせる */
-table.judge-scores .col-name .truncate {
-  display: inline-block;
-  line-height: 1.5;
-}
-
-/* ========== Topbar: mobile-first ========== */
-/* モバイル：flex 横並び（必要なら折返し） */
+/* ========== 7) Page Topbar: モバイル優先の補助バー ========== */
 .page-topbar{
   position: sticky;
   top: calc(var(--header-h) + var(--header-gap));
@@ -495,57 +493,57 @@ table.judge-scores .col-name .truncate {
   border-bottom: 1px solid var(--border);
   padding: 6px 0;
 
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;             /* タイトルが長い場合に折返し可 */
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;     /* 長いとき折返し */
 }
-
-.page-topbar .breadcrumbs{ margin: 0; }
+.page-topbar .breadcrumbs{ margin:0 }
 .page-topbar .topbar-title{
-  display: none;               /* 既定は非表示（.show-title で出す） */
-  font-size: 14px;
-  color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display:none;       /* .show-title で表示 */
+  font-size:14px;
+  color:var(--muted);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
 }
-.page-topbar.show-title .topbar-title{ display: inline-block; }
+.page-topbar.show-title .topbar-title{ display:inline-block }
 
-/* 年ナビ（左右に寄せるときは margin-left:auto を使う） */
+/* 年度ナビ（右寄せ） */
 .year-pager{
-  margin-left: auto;
-  display: inline-flex;
-  gap: 8px;
+  margin-left:auto;
+  display:inline-flex;
+  gap:8px;
 }
 .year-pager .btn{
-  display: inline-block;
-  padding: 6px 12px;           /* ←1つに統一 */
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: #fff;
-  color: inherit;
-  text-decoration: none;
-  line-height: 1.3;
+  display:inline-block;
+  padding:6px 12px;
+  background:#fff;
+  color:inherit;
+  text-decoration:none;
+  border:1px solid var(--border);
+  border-radius:999px;
+  line-height:1.3;
 }
 .year-pager .btn:hover{
   background: color-mix(in srgb, var(--accent) 8%, #fff);
-  text-decoration: none;
+  text-decoration:none;
 }
 
-/* ========== Desktop: grid 2列2行 ========== */
+/* デスクトップでは2列2行のグリッド化（左: パンくず/タイトル、右: 年ナビ） */
 @media (min-width: 641px){
   .page-topbar{
-    display: grid;             /* ここで grid に切替 */
-    grid-template-columns: 1fr auto;   /* 左: パンくず/タイトル、右: 年ナビ */
-    grid-template-rows: auto auto;     /* 2行 */
+    display:grid;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
     gap: 8px 12px;
   }
-  .page-topbar .breadcrumbs{ grid-column: 1 / 2; grid-row: 1 / 2; }
-  .page-topbar .topbar-title{ grid-column: 1 / 2; grid-row: 2 / 3; }
-  .page-topbar .year-pager{   grid-column: 2 / 3; grid-row: 1 / 3; justify-self: end; margin-left: 0; }
+  .page-topbar .breadcrumbs{ grid-column: 1 / 2; grid-row: 1 / 2 }
+  .page-topbar .topbar-title{ grid-column: 1 / 2; grid-row: 2 / 3 }
+  .page-topbar .year-pager{ grid-column: 2 / 3; grid-row: 1 / 3; justify-self:end; margin-left:0 }
 }
 
+/* H1行（タイトル＋右側要素） */
 .h1-row{
   display:flex;
   align-items:center;
@@ -559,6 +557,6 @@ table.judge-scores .col-name .truncate {
   min-width:240px;
 }
 @media (max-width: 520px){
-  .h1-row{ gap:8px; }
-  .h1-row h1{ min-width:100%; }
+  .h1-row{ gap:8px }
+  .h1-row h1{ min-width:100% }
 }
