@@ -442,6 +442,12 @@ table.judge-scores .col-name .truncate{
 
 /* スマホでさらに圧縮 */
 @media (max-width: 640px){
+  table{ min-width: 0; }                     /* 560pxの下限を撤廃 */
+  thead th{ white-space: normal; }           /* 見出しも折返し許可 */
+  .col-name{  min-width: 120px; }            /* 列下限を緩める */
+  .col-catch{ min-width: 140px; }
+  .col-title{ min-width: 120px; }
+
   table.judge-scores .col-score,
   table.judge-scores .col-total{
     min-width:44px;
