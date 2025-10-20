@@ -80,7 +80,7 @@ const makeJudgeId = (name) =>
 
 // CSV読み込み
 const competitions = readCsv("competitions.csv");   // key,name
-const editions     = readCsv("editions.csv");       // comp,year
+const editions     = readCsv("editions.csv");       // comp,year,title,seq_no,final_date,short_label
 const comedians    = readCsv("comedians.csv");      // name,number,reading(任意)
 const results      = readCsv("final_results.csv");  // comp,year,comedian_name,rank, ...
 const judgesCsv        = readCsv("judges.csv");          // name
@@ -119,9 +119,15 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS editions (
     id              INTEGER PRIMARY KEY,
     competition_id  INTEGER NOT NULL REFERENCES competitions(id),
-    year            INTEGER NOT NULL,
-    UNIQUE (competition_id, year)
+    year            INTEGER,           -- 互換用（NULL許容にしておく）
+    title           TEXT,              -- 例: "M-1グランプリ2025" / "第44回ABCお笑いグランプリ"
+    seq_no          INTEGER,           -- 回数（不明ならNULL）
+    final_date      TEXT,              -- "YYYY-MM-DD"（ISO8601文字列）
+    short_label     TEXT,              -- 例: "2025" / "第44回"
+    UNIQUE (competition_id, year)      -- 既存互換。year未入力の行は重複しないよう注意
   );
+  CREATE INDEX IF NOT EXISTS idx_editions_comp_seq   ON editions(competition_id, seq_no);
+  CREATE INDEX IF NOT EXISTS idx_editions_comp_date  ON editions(competition_id, final_date);
 
   -- 芸人（(name,number)から決定的ID=TEXT主キー）
   CREATE TABLE IF NOT EXISTS comedians (
@@ -224,11 +230,32 @@ db.transaction(() => {
 
   // editions
   const upsertEd = db.prepare(`
-    INSERT INTO editions (competition_id, year)
-    SELECT c.id, ? FROM competitions c WHERE c.key=?
-    ON CONFLICT(competition_id, year) DO NOTHING
+    INSERT INTO editions (competition_id, year, title, seq_no, final_date, short_label)
+    SELECT c.id, @year, @title, @seq, @date, @label
+    FROM competitions c WHERE c.key=@comp
+    ON CONFLICT(competition_id, year) DO UPDATE SET
+      title       = COALESCE(excluded.title,       editions.title),
+      seq_no      = COALESCE(excluded.seq_no,      editions.seq_no),
+      final_date  = COALESCE(excluded.final_date,  editions.final_date),
+      short_label = COALESCE(excluded.short_label, editions.short_label)
   `);
-  for (const r of editions) upsertEd.run(Number(r.year), r.comp);
+
+  for (const r of editions) {
+    const y   = (r.year ?? "") === "" ? null : Number(r.year);
+    const seq = (r.seq_no ?? "") === "" ? null : Number(r.seq_no);
+    const dt  = (r.final_date ?? "").trim() || null;     // "YYYY-MM-DD" or null
+    const lab = (r.short_label ?? "").trim() || null;
+    const ttl = (r.title ?? "").trim() || null;
+
+    upsertEd.run({
+      comp:  r.comp,
+      year:  y,
+      title: ttl,
+      seq:   seq,
+      date:  dt,
+      label: lab,
+    });
+  }
 
   // 初期投入（CSVのcomedians.csvがあれば）
   for (const r of comedians) {

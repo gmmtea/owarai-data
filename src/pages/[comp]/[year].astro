@@ -1,6 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { listEditionParams, getEditionTable, getEditionJudges, getJudgeScoreTable, listEditionYears } from "../../lib/queries";
+import { listEditionParams, getEditionTable, getJudgeScoreTable, listEditionYears } from "../../lib/queries";
 import {
   orderColumns, labelFor, MULTILINE_KEYS, normalizeCellValue,
   isTitleKey, relatedMovieKeyForTitle, colClassFor
@@ -10,8 +10,11 @@ import JudgeScoresTable from "../../components/JudgeScoresTable.astro";
 const base = import.meta.env.BASE_URL;
 
 export async function getStaticPaths() {
-  const params = listEditionParams();
-  return params.map(({ comp, year }) => ({ params: { comp, year } }));
+  const params = listEditionParams()
+    .filter(p => p.year != null)
+    .map(p => ({ params: { comp: p.comp, year: String(p.year) } }));
+
+  return params;
 }
 
 const { comp, year } = Astro.params as { comp: string; year: string };
@@ -19,7 +22,24 @@ const y = Number(year);
 const data = getEditionTable(comp, y);
 if (!data) throw new Error("該当データなし");
 const { edition, rows, extraKeys } = data;
-const labels: Record<string,string> = { m1:"M-1グランプリ", koc:"キングオブコント", r1:"R-1グランプリ" };
+
+// タイトルは edition.title があれば優先、無ければ従来の "{competition_name} {year} 決勝結果"
+const pageTitle = edition.title ?? `${edition.competition_name} ${edition.year} 決勝結果`;
+
+// "YYYY-MM-DD" → "YYYY年M月D日(曜)" 変換（final_date があれば表示）
+function formatJpDate(s?: string | null) {
+  if (!s) return null;
+  // "YYYY-M-D" or "YYYY-MM-DD" を許容して手動パース
+  const m = String(s).trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (!m) return s; // 期待フォーマットでない場合は原文返し
+  const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+  // UTC基準で曜日を出す（ローカルTZのズレ防止）
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  const youbi = ["日","月","火","水","木","金","土"][dt.getUTCDay()];
+  return `${y}年${mo}月${d}日(${youbi})`;
+}
+
+const finalDateText = formatJpDate(edition.final_date);
 
 // ★ 並び順を統一
 const cols = orderColumns(extraKeys);
@@ -83,7 +103,7 @@ const i = years.indexOf(y);
 const prevYear = i > 0 ? years[i-1] : null;          // 前年（存在すれば）
 const nextYear = i >= 0 && i < years.length-1 ? years[i+1] : null; // 翌年
 ---
-<Base title={`${edition.competition_name} ${edition.year} 決勝結果`}>
+<Base title={`${pageTitle} 決勝結果`}>
   <nav class="breadcrumbs">
     <a href={base}>トップ</a><span class="sep">/</span>
     <a href={`${base}${comp}`}>{edition.competition_name}</a><span class="sep">/</span>
@@ -92,7 +112,7 @@ const nextYear = i >= 0 && i < years.length-1 ? years[i+1] : null; // 翌年
 
   <div class="sticky-h1">
     <div class="h1-row">
-      <h1>{edition.competition_name} {edition.year} 決勝結果</h1>
+      <h1>{pageTitle} 決勝結果</h1>
       {(prevYear != null || nextYear != null) && (
         <nav class="year-pager">
           {prevYear != null && (
@@ -105,6 +125,9 @@ const nextYear = i >= 0 && i < years.length-1 ? years[i+1] : null; // 翌年
       )}
     </div>
   </div>
+  <!-- <div>
+    {finalDateText && <p class="muted h1-sub">決勝: {finalDateText}</p>}
+  </div> -->
 
   <div class="table-wrap">
     <table>
@@ -178,4 +201,7 @@ const nextYear = i >= 0 && i < years.length-1 ? years[i+1] : null; // 翌年
     margin: 0;            /* 余白で跳ねないように */
     line-height: 1.3;
   }
+
+  .h1-row{ display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
+  .h1-sub{ margin:0; font-size:14px; }
 </style>

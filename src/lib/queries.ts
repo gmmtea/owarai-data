@@ -32,11 +32,15 @@ export function competitionName(key: string): string | null {
 // ナビ用
 export function listEditionParams() {
   const rows = db().prepare(`
-    select c.key as comp, e.year
+    select c.key as comp, e.year, e.short_label
     from editions e join competitions c on c.id=e.competition_id
     order by c.key, e.year
-  `).all() as { comp: string; year: number }[];
-  return rows.map(r => ({ comp: r.comp, year: String(r.year) }));
+  `).all() as { comp: string; year: number | null; short_label: string | null }[];
+  return rows.map(r => ({
+    comp: r.comp,
+    year: r.year, // NULL あり
+    short_label: r.short_label
+  }));
 }
 
 // final_results の追加列一覧（id,edition_id,comedian_id,rank を除外）
@@ -49,45 +53,61 @@ function finalResultExtraColumns(): string[] {
 // 大会×年の表
 export function getEditionTable(comp: string, year: number) {
   const ed = db().prepare(`
-    select e.id as edition_id, e.year, c.name as competition_name
-    from editions e join competitions c on c.id=e.competition_id
-    where c.key=? and e.year=?`).get(comp, year) as any;
+    select
+      e.id           as edition_id,
+      e.year         as year,
+      e.title        as title,
+      e.final_date   as final_date,
+      e.short_label  as short_label,
+      c.name         as competition_name
+    from editions e
+    join competitions c on c.id=e.competition_id
+    where c.key=? and e.year=?`
+  ).get(comp, year) as any;
   if (!ed) return null;
 
   const extras = finalResultExtraColumns();
   const selectExtras = extras.map(k => `fr."${k}" as "${k}"`).join(", ");
   const sql = `
-    select
-      fr.rank,
-      fr.rank_sort,
-      co.id as comedian_id,
-      co.name,
-      CAST(fr.first_order AS INTEGER) AS __ord1
+    select fr.rank, fr.rank_sort, co.id as comedian_id, co.name
       ${selectExtras ? ","+selectExtras : ""}
     from final_results fr
     join comedians co on co.id=fr.comedian_id
     where fr.edition_id=?
-    order by
-      CAST(fr.rank_sort AS INTEGER) asc,   -- 1) 順位（数値化）
-      (__ord1 is null) asc,                -- 2) 出順がある行を先に
-      __ord1 asc,                          -- 3) 1本目出順 昇順
-      co.name asc                          -- 4) 最後の安定化
+    order by CAST(fr.rank_sort AS INTEGER) asc, co.name asc
   `;
   const rows = db().prepare(sql).all(ed.edition_id) as any[];
 
   const used = extras.filter(k => rows.some(r => r[k] !== null && String(r[k] ?? "").trim() !== ""));
-  return { edition: { year: ed.year, competition_name: ed.competition_name }, extraKeys: used, rows };
+  return {
+    edition: {
+      year: ed.year,
+      title: ed.title,
+      final_date: ed.final_date,     // "YYYY-MM-DD" 文字列 or null
+      short_label: ed.short_label,
+      competition_name: ed.competition_name,
+    },
+    extraKeys: used,
+    rows
+  };
 }
 
 // 大会ページ（年ごとの表の配列）
 export function getCompetitionYearTables(comp: string) {
   const years = db().prepare(`
-    select e.year from editions e
+    select e.year, e.short_label
+    from editions e
     join competitions c on c.id=e.competition_id
     where c.key=?
     order by e.year desc
-  `).all(comp) as { year:number }[];
-  return years.map(y => ({ year: y.year, table: getEditionTable(comp, y.year)! }));
+  `).all(comp) as { year:number|null; short_label:string|null }[];
+
+  // 表データは year がある回のみ生成（現行の [comp]/[year] ルート都合）
+  return years.map(y => ({
+    year: y.year,                      // null の可能性あり（表示側で扱う）
+    short_label: y.short_label,
+    table: (y.year != null) ? getEditionTable(comp, y.year)! : null
+  }));
 }
 
 // 芸人ID一覧（登場者のみ）
@@ -119,6 +139,7 @@ export function getComedianTables(comedianId: string) {
   const sql = `
     select
       e.year,
+      e.short_label,
       c.key  as comp,
       c.name as competition_name,
       fr.rank,
@@ -264,7 +285,7 @@ export function listEditionYears(comp: string): number[] {
     select e.year
     from editions e
     join competitions c on c.id=e.competition_id
-    where c.key=?
+    where c.key=? and e.year is not null
     order by e.year asc
   `).all(comp) as { year:number }[];
   return rows.map(r => r.year);
