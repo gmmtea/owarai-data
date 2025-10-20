@@ -1,15 +1,3 @@
-/* ========================================================================
-   global.css (整理版)
-   目的:
-     - トークン一元化（色・間隔・角丸・幅）
-     - レイアウト/コンポーネント/ユーティリティの階層化
-     - 特異性を下げて上書きしやすく（:where() の活用）
-     - 可読性向上のため日本語コメントを多数付与
-   注意:
-     - 既存の見た目・挙動を極力維持
-     - 数値は常に半角
-   ======================================================================== */
-
 /* ========== 1) Design Tokens: CSSカスタムプロパティ（サイト全体の定義） ========== */
 :root{
   /* レイアウト寸法 */
@@ -226,15 +214,17 @@ tbody tr:hover{ background:#fff8f1 }
   position: sticky;
   left: 0;
   z-index: 2;
+  width: 60px;
 }
-.table-wrap th.sticky-1{ background: var(--brand); color: var(--brand-contrast) }
-.table-wrap td.sticky-1{ background: #fff }
+/* 先頭列セルの既定色（白） */
+.table-wrap td.sticky-1 { background: #fff; }
+/* 行ホバー時は先頭列も同じ色に */
+.table-wrap tbody tr:hover > td.sticky-1 { background:#fff8f1; }
 
 /* 列の幅・整列（必要に応じて追加） */
-.col-year   { min-width: 60px }
+.col-year   { width: 60px; max-width: 60px; }
 .col-rank   {
   min-width: 60px;
-  width: 1%;                 /* 自動レイアウトで最小幅に寄せる */
   white-space: nowrap;
   padding-right: 6px;
 }
