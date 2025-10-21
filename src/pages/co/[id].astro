@@ -106,6 +106,17 @@ const sections: Section[] = Object.entries(byComp).map(([comp, block]: any) => {
                       .filter(Boolean)
                       .join(" ");
 
+                    // 1本目出順は「A-2番」形式で表示（first_group があれば先頭に付ける）
+                    if (c.key === "first_order") {
+                      const ord = v;
+                      const grp = r["first_group"];           // ← queries 側で隠し列として入っている
+                      const text =
+                        ord == null || String(ord).trim() === ""
+                          ? ""
+                          : `${grp ? grp + "-" : ""}${ord}番`;
+                      return <td class={cls}>{text}</td>;
+                    }
+
                     if (c.related_key) {
                       const url = r[c.related_key] ? String(r[c.related_key]) : "";
                       const isYouTube =
