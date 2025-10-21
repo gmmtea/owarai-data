@@ -7,6 +7,22 @@ const hasFirstGroup: boolean = !!db().prepare(
   `SELECT 1 FROM pragma_table_info('final_results') WHERE name='first_group'`
 ).get();
 
+// --- multiline列の \n 復元ユーティリティ ------------------------------
+// columns: [{ key, is_multiline, ... }, ...] に従い、row[key] の "\\n" → 実改行("\n")
+function restoreMultilineInRow(
+  row: Record<string, unknown>,
+  columns: Array<{ key: string; is_multiline: 0 | 1 }>
+) {
+  for (const c of columns) {
+    if (c.is_multiline === 1) {
+      const v = row[c.key];
+      if (typeof v === "string") {
+        row[c.key] = v.replace(/\\n/g, "\n");
+      }
+    }
+  }
+}
+
 /* 基本: 大会メタ */
 export function listCompetitions(): { key: string; name: string; sort_order: number | null }[] {
   return db().prepare(`
@@ -89,6 +105,9 @@ export function getEditionTable(comp: string, year: number) {
       co.reading ASC,                      -- ③b 読み昇順
       co.name ASC                          -- ③c 保険（同一読みの安定化）
   `).all(ed.edition_id) as any[];
+
+  // is_multiline=1 の列だけ \\n → \n に復元
+  for (const r of rows) restoreMultilineInRow(r, columns);
 
   return {
     edition: {
@@ -187,6 +206,7 @@ export function getComedianTables(comedianId: string) {
       LIMIT 1
     `;
     const extra = selectExtra ? db().prepare(sql).get(edition_id, comedian_id) as any : {};
+    
     return { cols, extra };
   }
 
@@ -202,6 +222,10 @@ export function getComedianTables(comedianId: string) {
     }
     // 行ごとの追加値（動画列含む）を読み込み
     const { extra } = loadExtrasForEditionRow(r.edition_id, comedianId);
+
+    // ★ is_multiline=1 の列だけ \\n → \n に復元（例: catchphrase）
+    restoreMultilineInRow(extra, y.columns);
+
     y.rows.push({ ...r, ...extra });
   }
   return { comedian: co, byComp };
