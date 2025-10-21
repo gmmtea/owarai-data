@@ -94,6 +94,23 @@ const toNullable = (x) => {
   return s === "" ? null : s;
 };
 
+// グループ名はユーザー定義の任意文字列を許可（NFKC＋trimのみ）
+function normalizeFirstGroup(raw) {
+  if (raw == null) return null;
+  const s = String(raw).normalize("NFKC").trim();
+  return s === "" ? null : s;  // 空文字はNULL、それ以外は無加工で保存
+}
+function normalizeIntOrNull(raw) {
+  if (raw == null) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+  if (!/^-?\d+$/.test(s)) {
+    console.warn(`[warn] first_order 非整数を検出: "${s}" → null にします`);
+    return null;
+  }
+  return Math.trunc(Number(s));
+}
+
 /* ============================= CSV 読み込み ============================= */
 // 空でも進む。空なら該当テーブルは0件で終わるだけ。
 const competitions       = readCsv("competitions.csv");     // key,name,sort_order?
@@ -108,7 +125,18 @@ const judgeScoresCsv     = readCsv("judge_scores.csv");     // comp,year,round_n
 // 既知の基本キー以外の列を追加列として採用（型はヘッダ値から簡易推定）
 const BASE_KEYS = new Set(["comp","year","comedian_name","comedian_number","rank","rank_sort"]);
 const header = results[0] ? Object.keys(results[0]) : [];
-const extraCols = header.filter(h => !BASE_KEYS.has(h));
+let extraCols = header.filter(h => !BASE_KEYS.has(h));
+
+// 列順を調整：first_group を first_order の直前に移動
+{
+  const io = extraCols.indexOf("first_order");
+  const ig = extraCols.indexOf("first_group");
+  if (io !== -1 && ig !== -1 && ig > io) {
+    extraCols.splice(ig, 1);
+    extraCols.splice(io, 0, "first_group");
+  }
+}
+
 for (const col of extraCols) {
   if (!isSafeCol(col)) {
     throw new Error(`列名が不正です: ${col}（英小文字・数字・_ のみ）`);
@@ -116,6 +144,7 @@ for (const col of extraCols) {
 }
 // 簡易型推定
 const inferType = (name) => {
+  if (/_order$/.test(name)) return "INTEGER";
   const vals = results.map(r => r[name]).filter(v => v !== undefined && String(v).trim() !== "");
   const allInt = vals.length > 0 && vals.every(v => /^-?\d+$/.test(String(v)));
   const allNum = vals.length > 0 && vals.every(v => /^-?\d+(\.\d+)?$/.test(String(v)));
@@ -308,8 +337,22 @@ db.transaction(() => {
     const rankText = String(r.rank);
     const rankSort = computeRankSort(rankText);
 
-    const params = { edition_id: ed.id, comedian_id: coRow.id, rank: rankText, rank_sort: rankSort };
-    for (const k of extraCols) params[k] = toNullable(r[k]);
+    // --- 1本目: CSVは分離済みを想定。軽い正規化のみ ---
+    const first_group = normalizeFirstGroup(r.first_group);
+    const first_order = normalizeIntOrNull(r.first_order);
+
+    const params = {
+      edition_id: ed.id,
+      comedian_id: coRow.id,
+      rank: rankText,
+      rank_sort: rankSort,
+      first_group,
+    };
+    for (const k of extraCols) if (k !== "first_group") params[k] = toNullable(r[k]);
+
+    // first_order は「番」を除去した数値で上書き（DBは数値のみを持つ）
+    if ("first_order" in r) params["first_order"] = first_order;
+
     insFR.run(params);
   }
 
@@ -386,9 +429,10 @@ const infoCols2 = db.prepare(`PRAGMA table_info('final_results')`).all()
   .map(r => r.name)
   .filter(n => !baseCols2.has(n));
 
-function autoMetaFor2(key){
+function autoMetaFor(key){
   const baseLabel = ({
     catchphrase:   "キャッチコピー",
+    first_group:   "1本目グループ名",
     first_order:   "1本目出順",
     first_result:  "1本目結果",
     first_title:   "1本目ネタ",
@@ -408,13 +452,16 @@ function autoMetaFor2(key){
                   : (key === "second_title") ? "second_movie" : null;
   const pref     = ({
     catchphrase: 10,
+    // first_group はUIに出さないので順序は適当でOK
     first_order: 20, first_result: 21, first_title: 22,
     second_order:30, second_result:31, second_title:32,
   }[key]) ?? null;
   const multi    = key === "catchphrase" ? 1 : 0;
   return { label:baseLabel, pref, multi, colClass, isMovie, related };
 }
-const insMeta2 = db.prepare(`
+
+// columns_meta へUPSERT投入
+const insMeta = db.prepare(`
   INSERT INTO columns_meta(key,label,pref_order,is_multiline,col_class,is_movie,related_key)
   VALUES (@key,@label,@pref,@multi,@class,@movie,@related)
   ON CONFLICT(key) DO UPDATE SET
@@ -426,33 +473,47 @@ const insMeta2 = db.prepare(`
     related_key=excluded.related_key
 `);
 for (const k of infoCols2) {
-  const m = autoMetaFor2(k);
-  insMeta2.run({
-    key:k, label:m.label, pref:m.pref, multi:m.multi,
-    class:m.colClass ?? null, movie:m.isMovie, related:m.related ?? null
+  const m = autoMetaFor(k);
+  insMeta.run({
+    key: k,
+    label: m.label,
+    pref: m.pref,
+    multi: m.multi,
+    class: m.colClass ?? null,
+    movie: m.isMovie,
+    related: m.related ?? null,
   });
 }
 
-// 2) 使用列テーブル（毎回作り直し）
+// 2) 使用列（その年で実際に値が入っている列だけ）
 db.exec(`
   CREATE TABLE IF NOT EXISTS edition_used_columns (
     edition_id INTEGER NOT NULL,
     col_key    TEXT    NOT NULL,
     PRIMARY KEY (edition_id, col_key)
   );
-  DELETE FROM edition_used_columns;
 `);
-const editionIds2 = db.prepare(`SELECT id FROM editions`).all().map(r=>r.id);
-const insertUsed2 = db.prepare(`INSERT INTO edition_used_columns(edition_id,col_key) VALUES (?,?)`);
-for (const eid of editionIds2) {
-  for (const k of infoCols2) {
+db.exec(`DELETE FROM edition_used_columns`);
+
+const editionIds = db.prepare(`SELECT id FROM editions`).all().map(r=>r.id);
+const insertUsed = db.prepare(`INSERT INTO edition_used_columns(edition_id,col_key) VALUES (?,?)`);
+
+// final_results の列一覧（ベース列は除外）
+const baseCols = new Set(["id","edition_id","comedian_id","rank","rank_sort"]);
+const infoCols = db.prepare(`PRAGMA table_info('final_results')`).all()
+  .map(r => r.name)
+  .filter(n => !baseCols.has(n));
+
+for (const eid of editionIds) {
+  for (const k of infoCols) {
+    if (k === "first_group") continue;  // UIには出さない
     const has = db.prepare(`
       SELECT 1
       FROM final_results
       WHERE edition_id=? AND "${k}" IS NOT NULL AND TRIM("${k}")!=''
       LIMIT 1
     `).get(eid);
-    if (has) insertUsed2.run(eid, k);
+    if (has) insertUsed.run(eid, k);
   }
 }
 

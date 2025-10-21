@@ -143,8 +143,19 @@ const nextYear = i >= 0 && i < years.length-1 ? years[i+1] : null; // 翌年
             </td>
             {cols.map((c:any) => {
               const v = r[c.key];
-              const text = v == null ? "" : String(v);
               const cls  = [c.col_class ?? "", c.is_multiline === 1 ? "multiline" : ""].filter(Boolean).join(" ");
+
+              // ★ first_order を「A-2番」形式で表示（group が無ければ「2番」）
+              if (c.key === "first_order") {
+                const ord = v;
+                const grp = (r as any)["first_group"]; // 行データにあれば利用
+                const text = (ord == null || String(ord).trim() === "")
+                  ? ""
+                  : `${grp ? grp + "-" : ""}${ord}番`;
+                return <td class={cls}>{text}</td>;
+              }
+
+              const text = v == null ? "" : String(v);
               if (c.related_key) {
                 const url = r[c.related_key] ? String(r[c.related_key]) : "";
                 const isYouTube = !!url && /(?:^https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\//i.test(url);

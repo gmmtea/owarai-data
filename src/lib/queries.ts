@@ -2,6 +2,11 @@ import Database from "better-sqlite3";
 let _db: any = null;
 const db = () => (_db ??= new (Database as any)("data/awards.sqlite", { readonly: true }));
 
+// final_results に first_group 列があるか（ビルド時に1回評価される想定）
+const hasFirstGroup: boolean = !!db().prepare(
+  `SELECT 1 FROM pragma_table_info('final_results') WHERE name='first_group'`
+).get();
+
 /* 基本: 大会メタ */
 export function listCompetitions(): { key: string; name: string; sort_order: number | null }[] {
   return db().prepare(`
@@ -47,21 +52,42 @@ export function getEditionTable(comp: string, year: number) {
   if (!ed) return null;
 
   const columns = listUsedColumnsWithMeta(ed.edition_id);
-  // 表示はしないが「タイトルの相方となる動画列」を行データに含める
+  // 表示しないが行データに含めたい「隠し列」
+  //  - 動画列
+  //  - first_group（表示しないが first_order と合成表示に使う）
   const hiddenMovieKeys = Array.from(new Set(
     columns.map(c => c.related_key).filter(Boolean) as string[]
   ));
+  const hiddenKeys = [
+    ...hiddenMovieKeys,
+    ...(hasFirstGroup ? ["first_group"] : [])
+  ];
+
   const selectExtra = [
     ...columns.map(c => `fr."${c.key}" AS "${c.key}"`),
-    ...hiddenMovieKeys.map(k => `fr."${k}" AS "${k}"`)
+    ...hiddenKeys.map(k => `fr."${k}" AS "${k}"`)
   ].join(", ");
 
   const rows = db().prepare(`
-    SELECT fr.rank, fr.rank_sort, co.id AS comedian_id, co.name ${selectExtra ? ","+selectExtra : ""}
+    SELECT
+      fr.rank,
+      fr.rank_sort,
+      co.id  AS comedian_id,
+      co.name,
+      co.reading
+      ${selectExtra ? ","+selectExtra : ""}
     FROM final_results fr
     JOIN comedians co ON co.id=fr.comedian_id
     WHERE fr.edition_id=?
-    ORDER BY CAST(fr.rank_sort AS INTEGER) ASC, co.name ASC
+    ORDER BY
+      CAST(fr.rank_sort AS INTEGER) ASC,   -- ① 順位（数値化）
+      (fr.first_group IS NULL),            -- ②a 出順: グループなしを後ろへ
+      fr.first_group,                      -- ②b グループ名（文字列昇順）
+      (fr.first_order IS NULL),            -- ②c 出順番号なしを後ろへ
+      CAST(fr.first_order AS INTEGER) ASC, -- ②d 出順番号（数値昇順）
+      (co.reading IS NULL),                -- ③a 読みがない人を後ろへ
+      co.reading ASC,                      -- ③b 読み昇順
+      co.name ASC                          -- ③c 保険（同一読みの安定化）
   `).all(ed.edition_id) as any[];
 
   return {
@@ -145,10 +171,15 @@ export function getComedianTables(comedianId: string) {
     const hiddenMovieKeys = Array.from(new Set(
       cols.map(c => c.related_key).filter(Boolean) as string[]
     ));
+    const hiddenKeys = [
+      ...hiddenMovieKeys,
+      ...(hasFirstGroup ? ["first_group"] : [])
+    ];
     const selectExtra = [
       ...cols.map(c => `"${c.key}" AS "${c.key}"`),
-      ...hiddenMovieKeys.map(k => `"${k}" AS "${k}"`)
+      ...hiddenKeys.map(k => `"${k}" AS "${k}"`)
     ].join(", ");
+
     const sql = `
       SELECT ${selectExtra || "1"}
       FROM final_results
@@ -236,8 +267,10 @@ export function getJudgeScoreTable(comp: string, year: number, round_no: number)
           AND js2.round_no   = ?
           AND js2.comedian_id= fr.comedian_id
       )
-    ORDER BY (order_no IS NULL), order_no ASC,
-             CAST(fr.rank_sort AS INTEGER) ASC, co.name ASC
+    ORDER BY
+      (order_no IS NULL), order_no ASC,              -- 出順（未設定は後ろ）
+      CAST(fr.rank_sort AS INTEGER) ASC,             -- 順位
+      (co.reading IS NULL), co.reading ASC, co.name ASC  -- 読み→名前
   `).all(round_no, round_no, ed.eid, round_no) as Array<{
     comedian_id:string; comedian_name:string; comedian_reading:string|null;
     rank_sort:number; order_no:number|null; seat_no:number|null; score:number|null;
