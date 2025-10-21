@@ -74,6 +74,7 @@ function computeRankSort(rankRaw) {
   if (r === "" || r.toLowerCase() === "null") return 99999;
   if (r === "優勝") return 1;
   if (r === "準優勝") return 2;
+  if (r === "マイナビ賞") return 2;
   if (r === "ベスト4") return 3;
   if (r === "決勝進出") return 12;
   if (r === "ベスト8") return 12;
