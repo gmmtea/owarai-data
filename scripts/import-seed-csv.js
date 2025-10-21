@@ -365,6 +365,125 @@ db.transaction(() => {
   }
 })();
 
+// --- ここからは“別フェーズ”：メタ表・使用列・ビュー（巻き戻しの影響を切り離す） ---
+// 1) メタテーブル
+db.exec(`
+  CREATE TABLE IF NOT EXISTS columns_meta (
+    key          TEXT PRIMARY KEY,
+    label        TEXT,
+    pref_order   INTEGER,
+    is_multiline INTEGER DEFAULT 0,
+    col_class    TEXT,
+    is_movie     INTEGER DEFAULT 0,
+    related_key  TEXT
+  );
+`);
+
+// final_results の列一覧（ベース列は除外）
+const baseCols2 = new Set(["id","edition_id","comedian_id","rank","rank_sort"]);
+const infoCols2 = db.prepare(`PRAGMA table_info('final_results')`).all()
+  .map(r => r.name)
+  .filter(n => !baseCols2.has(n));
+
+function autoMetaFor2(key){
+  const baseLabel = ({
+    catchphrase:   "キャッチコピー",
+    first_order:   "1本目出順",
+    first_result:  "1本目結果",
+    first_title:   "1本目ネタ",
+    second_order:  "2本目出順",
+    second_result: "2本目結果",
+    second_title:  "2本目ネタ",
+    first_movie:   "1本目動画",
+    second_movie:  "2本目動画",
+  }[key]) ?? key;
+  const colClass =
+    /_order$/.test(key)  ? "col-order"  :
+    /_result$/.test(key) ? "col-result" :
+    /_title$/.test(key)  ? "col-title"  :
+    key === "catchphrase"? "col-catch"  : null;
+  const isMovie  = /_movie$/.test(key) ? 1 : 0;
+  const related  = (key === "first_title")  ? "first_movie"
+                  : (key === "second_title") ? "second_movie" : null;
+  const pref     = ({
+    catchphrase: 10,
+    first_order: 20, first_result: 21, first_title: 22,
+    second_order:30, second_result:31, second_title:32,
+  }[key]) ?? null;
+  const multi    = key === "catchphrase" ? 1 : 0;
+  return { label:baseLabel, pref, multi, colClass, isMovie, related };
+}
+const insMeta2 = db.prepare(`
+  INSERT INTO columns_meta(key,label,pref_order,is_multiline,col_class,is_movie,related_key)
+  VALUES (@key,@label,@pref,@multi,@class,@movie,@related)
+  ON CONFLICT(key) DO UPDATE SET
+    label=excluded.label,
+    pref_order=excluded.pref_order,
+    is_multiline=excluded.is_multiline,
+    col_class=excluded.col_class,
+    is_movie=excluded.is_movie,
+    related_key=excluded.related_key
+`);
+for (const k of infoCols2) {
+  const m = autoMetaFor2(k);
+  insMeta2.run({
+    key:k, label:m.label, pref:m.pref, multi:m.multi,
+    class:m.colClass ?? null, movie:m.isMovie, related:m.related ?? null
+  });
+}
+
+// 2) 使用列テーブル（毎回作り直し）
+db.exec(`
+  CREATE TABLE IF NOT EXISTS edition_used_columns (
+    edition_id INTEGER NOT NULL,
+    col_key    TEXT    NOT NULL,
+    PRIMARY KEY (edition_id, col_key)
+  );
+  DELETE FROM edition_used_columns;
+`);
+const editionIds2 = db.prepare(`SELECT id FROM editions`).all().map(r=>r.id);
+const insertUsed2 = db.prepare(`INSERT INTO edition_used_columns(edition_id,col_key) VALUES (?,?)`);
+for (const eid of editionIds2) {
+  for (const k of infoCols2) {
+    const has = db.prepare(`
+      SELECT 1
+      FROM final_results
+      WHERE edition_id=? AND "${k}" IS NOT NULL AND TRIM("${k}")!=''
+      LIMIT 1
+    `).get(eid);
+    if (has) insertUsed2.run(eid, k);
+  }
+}
+
+// 3) ビュー（存在すれば作り直し）
+db.exec(`DROP VIEW IF EXISTS view_edition_final_rows;`);
+db.exec(`DROP VIEW IF EXISTS view_competition_years;`);
+db.exec(`
+  CREATE VIEW view_edition_final_rows AS
+  SELECT
+    fr.edition_id,
+    e.year,
+    c.name  AS competition_name,
+    co.id   AS comedian_id,
+    co.name AS comedian_name,
+    fr.rank,
+    fr.rank_sort
+  FROM final_results fr
+  JOIN editions e     ON e.id=fr.edition_id
+  JOIN competitions c ON c.id=e.competition_id
+  JOIN comedians  co  ON co.id=fr.comedian_id;
+
+  CREATE VIEW view_competition_years AS
+  SELECT c.key AS comp, e.year, e.short_label
+  FROM editions e JOIN competitions c ON c.id=e.competition_id
+  ORDER BY c.key, e.year;
+`);
+
+// （任意）簡易確認ログ
+const check = db.prepare(`SELECT COUNT(*) AS n FROM sqlite_master WHERE name IN ('columns_meta','edition_used_columns')`).get();
+console.log(`post-build objects: ${check.n} (expect 2)`);
+
+
 /* ============================= 差し替え（原子的） ============================= */
 db.close();
 

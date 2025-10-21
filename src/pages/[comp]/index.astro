@@ -1,10 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
 import { listEditionParams, getCompetitionYearTables } from "../../lib/queries";
-import {
-  orderColumns, labelFor, MULTILINE_KEYS, normalizeCellValue,
-  isTitleKey, relatedMovieKeyForTitle, colClassFor
-} from "../../lib/columns";
 
 const base = import.meta.env.BASE_URL;
 
@@ -30,7 +26,8 @@ const compName = list.find(x=>x.table)?.table?.edition.competition_name ?? "大�
 
   {list.map(({ year, short_label, table }) => {
     const label = short_label ?? (year != null ? `${year}` : "（回次未設定）");
-    const cols = table ? orderColumns(table.extraKeys) : [];
+    // columns: [{ key, label, col_class, is_multiline, related_key, ... }]
+    const cols = table ? table.columns : [];
     return (
       <section>
         <h2 class="kv">
@@ -44,7 +41,7 @@ const compName = list.find(x=>x.table)?.table?.edition.competition_name ?? "大�
                 <tr>
                   <th class="sticky-1 col-name">芸人</th>
                   <th class="sticky-2 col-rank">順位</th>
-                  {cols.map((k: string) => <th class={colClassFor(k)}>{labelFor(k)}</th>)}
+                  {cols.map((c: any) => <th class={c.col_class ?? ""}>{c.label ?? c.key}</th>)}
                 </tr>
               </thead>
               <tbody>
@@ -52,12 +49,12 @@ const compName = list.find(x=>x.table)?.table?.edition.competition_name ?? "大�
                   <tr>
                     <td class="sticky-1 col-name"><a href={`${base}co/${r.comedian_id}`}>{r.name}</a></td>
                     <td class="sticky-2 col-rank"><span class="badge" data-ranksort={r.rank_sort}>{r.rank}</span></td>
-                    {cols.map((k) => {
-                      const text = normalizeCellValue(k, r[k]);
-                      const cls  = [colClassFor(k), MULTILINE_KEYS.has(k) ? "multiline" : ""].filter(Boolean).join(" ");
-                      if (isTitleKey(k)) {
-                        const movieKey = relatedMovieKeyForTitle(k);
-                        const url = movieKey ? normalizeCellValue(movieKey, r[movieKey]) : "";
+                    {cols.map((c: any) => {
+                      const v = r[c.key];
+                      const text = v == null ? "" : String(v);
+                      const cls = [c.col_class ?? "", c.is_multiline === 1 ? "multiline" : ""].filter(Boolean).join(" ");
+                      if (c.related_key) {
+                        const url = r[c.related_key] ? String(r[c.related_key]) : "";
                         const isYouTube = !!url && /(?:^https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\//i.test(url);
                         return (
                           <td class={cls}>

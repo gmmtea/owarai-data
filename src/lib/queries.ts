@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 let _db: any = null;
 const db = () => (_db ??= new (Database as any)("data/awards.sqlite", { readonly: true }));
 
-// 大会一覧・Map・名称取得
+/* 基本: 大会メタ */
 export function listCompetitions(): { key: string; name: string; sort_order: number | null }[] {
   return db().prepare(`
     SELECT key, name, sort_order
@@ -10,169 +10,173 @@ export function listCompetitions(): { key: string; name: string; sort_order: num
     ORDER BY sort_order IS NULL, sort_order, key
   `).all();
 }
-
-export function competitionMap(): Record<string, string> {
-  const rows = listCompetitions();
-  const map: Record<string, string> = {};
-  for (const r of rows) map[r.key] = r.name;
-  return map;
-}
-
-export function competitionOrder(): string[] {
-  // listCompetitions() は ORDER BY sort_order IS NULL, sort_order, key で並ぶので、
-  // そのまま key の配列にして返す
-  return listCompetitions().map(c => c.key);
-}
-
 export function competitionName(key: string): string | null {
-  const row = db().prepare(`select name from competitions where key=? limit 1`).get(key) as { name: string } | undefined;
+  const row = db().prepare(`SELECT name FROM competitions WHERE key=? LIMIT 1`).get(key) as { name: string } | undefined;
   return row?.name ?? null;
 }
 
-// ナビ用
+/* ナビ: comp/year/short_label */
 export function listEditionParams() {
-  const rows = db().prepare(`
-    select c.key as comp, e.year, e.short_label
-    from editions e join competitions c on c.id=e.competition_id
-    order by c.key, e.year
+  return db().prepare(`
+    SELECT comp, year, short_label FROM view_competition_years
   `).all() as { comp: string; year: number | null; short_label: string | null }[];
-  return rows.map(r => ({
-    comp: r.comp,
-    year: r.year, // NULL あり
-    short_label: r.short_label
-  }));
 }
 
-// final_results の追加列一覧（id,edition_id,comedian_id,rank を除外）
-function finalResultExtraColumns(): string[] {
-  const info = db().prepare(`pragma table_info('final_results')`).all() as { name: string }[];
-  const base = new Set(["id","edition_id","comedian_id","rank","rank_sort"]);
-  return info.map(i=>i.name).filter(n => !base.has(n));
+/* 追加列メタ（その年で実際に使われる列だけ、動画列は除外） */
+function listUsedColumnsWithMeta(edition_id: number) {
+  return db().prepare(`
+    SELECT m.key, m.label, m.pref_order, m.is_multiline, m.col_class, m.is_movie, m.related_key
+    FROM edition_used_columns u
+    JOIN columns_meta m ON m.key=u.col_key
+    WHERE u.edition_id=?
+      AND COALESCE(m.is_movie,0)=0
+    ORDER BY (m.pref_order IS NULL), m.pref_order, m.key
+  `).all(edition_id) as Array<{
+    key: string; label: string | null; pref_order: number | null;
+    is_multiline: 0|1; col_class: string | null; is_movie: 0|1|null; related_key: string | null;
+  }>;
 }
 
-// 大会×年の表
+/* 年テーブル（追加列は edition_used_columns × columns_meta で決定） */
 export function getEditionTable(comp: string, year: number) {
   const ed = db().prepare(`
-    select
-      e.id           as edition_id,
-      e.year         as year,
-      e.title        as title,
-      e.final_date   as final_date,
-      e.short_label  as short_label,
-      c.name         as competition_name
-    from editions e
-    join competitions c on c.id=e.competition_id
-    where c.key=? and e.year=?`
-  ).get(comp, year) as any;
+    SELECT e.id AS edition_id, e.year, e.title, e.final_date, e.short_label, c.name AS competition_name
+    FROM editions e JOIN competitions c ON c.id=e.competition_id
+    WHERE c.key=? AND e.year=? LIMIT 1
+  `).get(comp, year) as any;
   if (!ed) return null;
 
-  const extras = finalResultExtraColumns();
-  const selectExtras = extras.map(k => `fr."${k}" as "${k}"`).join(", ");
-  const sql = `
-    select fr.rank, fr.rank_sort, co.id as comedian_id, co.name
-      ${selectExtras ? ","+selectExtras : ""}
-    from final_results fr
-    join comedians co on co.id=fr.comedian_id
-    where fr.edition_id=?
-    order by CAST(fr.rank_sort AS INTEGER) asc, co.name asc
-  `;
-  const rows = db().prepare(sql).all(ed.edition_id) as any[];
+  const columns = listUsedColumnsWithMeta(ed.edition_id);
+  // 表示はしないが「タイトルの相方となる動画列」を行データに含める
+  const hiddenMovieKeys = Array.from(new Set(
+    columns.map(c => c.related_key).filter(Boolean) as string[]
+  ));
+  const selectExtra = [
+    ...columns.map(c => `fr."${c.key}" AS "${c.key}"`),
+    ...hiddenMovieKeys.map(k => `fr."${k}" AS "${k}"`)
+  ].join(", ");
 
-  const used = extras.filter(k => rows.some(r => r[k] !== null && String(r[k] ?? "").trim() !== ""));
+  const rows = db().prepare(`
+    SELECT fr.rank, fr.rank_sort, co.id AS comedian_id, co.name ${selectExtra ? ","+selectExtra : ""}
+    FROM final_results fr
+    JOIN comedians co ON co.id=fr.comedian_id
+    WHERE fr.edition_id=?
+    ORDER BY CAST(fr.rank_sort AS INTEGER) ASC, co.name ASC
+  `).all(ed.edition_id) as any[];
+
   return {
     edition: {
       year: ed.year,
       title: ed.title,
-      final_date: ed.final_date,     // "YYYY-MM-DD" 文字列 or null
+      final_date: ed.final_date,
       short_label: ed.short_label,
       competition_name: ed.competition_name,
     },
-    extraKeys: used,
+    columns,  // ← ラベル/クラス/改行フラグ込み
     rows
   };
 }
 
-// 大会ページ（年ごとの表の配列）
+/* 大会ページ（年ごと） */
 export function getCompetitionYearTables(comp: string) {
   const years = db().prepare(`
-    select e.year, e.short_label
-    from editions e
-    join competitions c on c.id=e.competition_id
-    where c.key=?
-    order by e.year desc
-  `).all(comp) as { year:number|null; short_label:string|null }[];
+    SELECT e.year, e.short_label, e.id AS edition_id
+    FROM editions e
+    JOIN competitions c ON c.id=e.competition_id
+    WHERE c.key=?
+    ORDER BY e.year DESC
+  `).all(comp) as { year:number|null; short_label:string|null; edition_id:number }[];
 
-  // 表データは year がある回のみ生成（現行の [comp]/[year] ルート都合）
   return years.map(y => ({
-    year: y.year,                      // null の可能性あり（表示側で扱う）
+    year: y.year,
     short_label: y.short_label,
     table: (y.year != null) ? getEditionTable(comp, y.year)! : null
   }));
 }
 
-// 芸人ID一覧（登場者のみ）
+/* 芸人ID一覧（登場者のみ） */
 export function listTargetComedianIds() {
   const rows = db().prepare(`
-    select distinct co.id
-    from comedians co
-    where exists (select 1 from final_results fr where fr.comedian_id=co.id)
-    order by co.name
+    SELECT DISTINCT co.id
+    FROM comedians co
+    WHERE EXISTS (SELECT 1 FROM final_results fr WHERE fr.comedian_id=co.id)
+    ORDER BY co.name
   `).all() as { id:string }[];
   return rows.map(r => r.id);
 }
 
-// 芸人の素データ（id, name, reading）を取得
+/* 芸人素データ */
 export function listComediansAll(): { id: string; name: string; reading: string | null }[] {
-  // 並びはページ側で調整するので素のまま返す（DBコラレーションを気にしないため）
   return db().prepare(`SELECT id, name, reading FROM comedians`).all();
 }
 
-// 芸人ページ：大会ごとに「年の縦表」
+/* 芸人ページ：大会ごとに年の縦表（追加列の選定は大会年ごとに実データベース準拠） */
 export function getComedianTables(comedianId: string) {
-  const co = db().prepare(`select id, name, reading from comedians where id=?`).get(comedianId) as any;
+  const co = db().prepare(`SELECT id, name, reading FROM comedians WHERE id=?`).get(comedianId) as any;
   if (!co) return null;
-  const extras = finalResultExtraColumns();
-  const selectExtras = extras.length
-    ? ", " + extras.map(k => `fr."${k}" as "${k}"`).join(", ")
-    : "";
 
-  const sql = `
-    select
+  // 1回の大きなSELECTで全戦績を取り、後で大会ごとに束ねる
+  const rows = db().prepare(`
+    SELECT
+      e.id   AS edition_id,
       e.year,
       e.short_label,
-      c.key  as comp,
-      c.name as competition_name,
+      c.key  AS comp,
+      c.name AS competition_name,
       fr.rank,
       fr.rank_sort,
-      co.name
-      ${selectExtras}
-    from final_results fr
-    join editions e     on e.id = fr.edition_id
-    join competitions c on c.id = e.competition_id
-    join comedians  co  on co.id = fr.comedian_id
-    where fr.comedian_id = ?
-    order by
-      (c.sort_order is null),  -- nullは後ろへ
-      c.sort_order,            -- 昇順で並べる
-      c.key,                   -- 同順番ならkeyで安定化
-      e.year desc              -- 各大会内は年の降順
-  `;
-  const rows = db().prepare(sql).all(comedianId) as any[];
+      co.name AS comedian_name
+    FROM final_results fr
+    JOIN editions e     ON e.id=fr.edition_id
+    JOIN competitions c ON c.id=e.competition_id
+    JOIN comedians  co  ON co.id=fr.comedian_id
+    WHERE fr.comedian_id = ?
+    ORDER BY (c.sort_order IS NULL), c.sort_order, c.key, e.year DESC
+  `).all(comedianId) as any[];
 
-  // 大会ごとに、実際に埋まっている追加列だけを出す
-  const byComp: Record<string, { competition_name:string, extraKeys:string[], rows:any[] }> = {};
-  for (const r of rows) {
-    const grp = (byComp[r.comp] ??= { competition_name: r.competition_name, extraKeys: [], rows: [] });
-    grp.rows.push(r);
+  // 大会ごとにグループ化。各年の「使用列メタ」を付与しつつ、値を動的SELECTで埋める
+  const byComp: Record<string, { competition_name:string, years: Array<{
+    year:number|null; short_label:string|null; columns: ReturnType<typeof listUsedColumnsWithMeta>; rows:any[]
+  }>}> = {};
+
+  // edition_id ごとに、その芸人の追加列＋関連動画列を取り出すヘルパ
+  function loadExtrasForEditionRow(edition_id:number, comedian_id:string) {
+    const cols = listUsedColumnsWithMeta(edition_id);
+    const hiddenMovieKeys = Array.from(new Set(
+      cols.map(c => c.related_key).filter(Boolean) as string[]
+    ));
+    const selectExtra = [
+      ...cols.map(c => `"${c.key}" AS "${c.key}"`),
+      ...hiddenMovieKeys.map(k => `"${k}" AS "${k}"`)
+    ].join(", ");
+    const sql = `
+      SELECT ${selectExtra || "1"}
+      FROM final_results
+      WHERE edition_id=? AND comedian_id=?
+      LIMIT 1
+    `;
+    const extra = selectExtra ? db().prepare(sql).get(edition_id, comedian_id) as any : {};
+    return { cols, extra };
   }
-  for (const k of Object.keys(byComp)) {
-    const used = extras.filter(col => byComp[k].rows.some(r => r[col] !== null && String(r[col] ?? "").trim() !== ""));
-    byComp[k].extraKeys = used;
+
+  for (const r of rows) {
+    const comp = r.comp as string;
+    const grp = (byComp[comp] ??= { competition_name: r.competition_name, years: [] });
+    let y = grp.years.find((yy) => yy.year === r.year);
+    if (!y) {
+      // 列メタを先に取りつつ、行の追加値も取得
+      const { cols } = loadExtrasForEditionRow(r.edition_id, comedianId);
+      y = { year: r.year, short_label: r.short_label, columns: cols, rows: [] };
+      grp.years.push(y);
+    }
+    // 行ごとの追加値（動画列含む）を読み込み
+    const { extra } = loadExtrasForEditionRow(r.edition_id, comedianId);
+    y.rows.push({ ...r, ...extra });
   }
   return { comedian: co, byComp };
 }
 
-// そのエディションの席並び（ヘッダに使う）
+/* 審査員・個票 */
 export function getEditionJudges(comp: string, year: number) {
   const ed = db().prepare(`
     SELECT e.id AS eid
@@ -190,7 +194,6 @@ export function getEditionJudges(comp: string, year: number) {
   `).all(ed.eid) as { seat_no:number; name:string }[];
 }
 
-// ラウンド別：行=芸人、列=席（審査員）の得点と合計
 export function getJudgeScoreTable(comp: string, year: number, round_no: number) {
   const ed = db().prepare(`
     SELECT e.id AS eid
@@ -213,7 +216,6 @@ export function getJudgeScoreTable(comp: string, year: number, round_no: number)
       co.name    AS comedian_name,
       co.reading AS comedian_reading,
       fr.rank_sort,
-      -- ラウンドに応じて出順を拾う（整数化）
       CASE ?
         WHEN 1 THEN CAST(fr.first_order  AS INTEGER)
         WHEN 2 THEN CAST(fr.second_order AS INTEGER)
@@ -234,38 +236,24 @@ export function getJudgeScoreTable(comp: string, year: number, round_no: number)
           AND js2.round_no   = ?
           AND js2.comedian_id= fr.comedian_id
       )
-    -- 出順があればそれを最優先、無ければ rank_sort→名前
     ORDER BY (order_no IS NULL), order_no ASC,
              CAST(fr.rank_sort AS INTEGER) ASC, co.name ASC
   `).all(round_no, round_no, ed.eid, round_no) as Array<{
-    comedian_id:string;
-    comedian_name:string;
-    comedian_reading:string|null;
-    rank_sort:number;
-    order_no:number|null;
-    seat_no:number|null;
-    score:number|null;
+    comedian_id:string; comedian_name:string; comedian_reading:string|null;
+    rank_sort:number; order_no:number|null; seat_no:number|null; score:number|null;
   }>;
 
-  // 横持ち化
   type Row = {
     comedian_id:string; comedian_name:string; comedian_reading:string|null;
-    rank_sort:number; order_no:number|null;
-    bySeat: Record<number, number|null>;
-    total:number|null
+    rank_sort:number; order_no:number|null; bySeat: Record<number, number|null>; total:number|null
   };
   const byId = new Map<string, Row>();
   for (const r of rows) {
     let row = byId.get(r.comedian_id);
     if (!row) {
       row = {
-        comedian_id:r.comedian_id,
-        comedian_name:r.comedian_name,
-        comedian_reading:r.comedian_reading ?? null,
-        rank_sort:r.rank_sort,
-        order_no:r.order_no,
-        bySeat:{},
-        total:null
+        comedian_id:r.comedian_id, comedian_name:r.comedian_name, comedian_reading:r.comedian_reading ?? null,
+        rank_sort:r.rank_sort, order_no:r.order_no, bySeat:{}, total:null
       };
       byId.set(r.comedian_id, row);
     }
@@ -279,14 +267,14 @@ export function getJudgeScoreTable(comp: string, year: number, round_no: number)
   return { seats, rows: out };
 }
 
-// 大会の開催年リスト（昇順）
+/* 年リスト（昇順） */
 export function listEditionYears(comp: string): number[] {
   const rows = db().prepare(`
-    select e.year
-    from editions e
-    join competitions c on c.id=e.competition_id
-    where c.key=? and e.year is not null
-    order by e.year asc
+    SELECT e.year
+    FROM editions e
+    JOIN competitions c ON c.id=e.competition_id
+    WHERE c.key=? AND e.year IS NOT NULL
+    ORDER BY e.year ASC
   `).all(comp) as { year:number }[];
   return rows.map(r => r.year);
 }

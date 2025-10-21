@@ -1,16 +1,15 @@
 ---
 import Base from "../layouts/Base.astro";
-import { listEditionParams, competitionMap, competitionOrder } from "../lib/queries";
+import { listEditionParams, listCompetitions } from "../lib/queries";
 
 const base = import.meta.env.BASE_URL;
 
 const params = listEditionParams();  // {comp, year|null, short_label|null}[]
-const labels = competitionMap();
-// 使用例: labels[comp] ?? comp
 
-// 並び順をDB定義に合わせる
-// 表示順（DBの sort_order 順を採用）
-const compOrder = competitionOrder(); // string[]
+// 大会ラベルと並び順は listCompetitions() から組み立てる
+const comps = listCompetitions(); // [{key,name,sort_order}]
+const labels = Object.fromEntries(comps.map(c => [c.key, c.name])); // key→name
+const compOrder = comps.map(c => c.key); // 並び順（sort_order→key）
 
 // Mapで収集
 // comp → [ {year, short_label}... ] にまとめる

@@ -1,10 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
 import { listEditionParams, getEditionTable, getJudgeScoreTable, listEditionYears } from "../../lib/queries";
-import {
-  orderColumns, labelFor, MULTILINE_KEYS, normalizeCellValue,
-  isTitleKey, relatedMovieKeyForTitle, colClassFor
-} from "../../lib/columns";
 import JudgeScoresTable from "../../components/JudgeScoresTable.astro";
 
 const base = import.meta.env.BASE_URL;
@@ -21,7 +17,7 @@ const { comp, year } = Astro.params as { comp: string; year: string };
 const y = Number(year);
 const data = getEditionTable(comp, y);
 if (!data) throw new Error("該当データなし");
-const { edition, rows, extraKeys } = data;
+const { edition, rows, columns } = data;
 
 // タイトルは edition.title があれば優先、無ければ従来の "{competition_name} {year} 決勝結果"
 const pageTitle = edition.title ?? `${edition.competition_name} ${edition.year} 決勝結果`;
@@ -41,8 +37,8 @@ function formatJpDate(s?: string | null) {
 
 const finalDateText = formatJpDate(edition.final_date);
 
-// ★ 並び順を統一
-const cols = orderColumns(extraKeys);
+// 表示する列（DBメタ順）
+const cols = columns; // [{key,label,col_class,is_multiline,related_key}, ...]
 
 const round1 = getJudgeScoreTable(comp, y, 1);
 const round2 = getJudgeScoreTable(comp, y, 2);
@@ -135,7 +131,7 @@ const nextYear = i >= 0 && i < years.length-1 ? years[i+1] : null; // 翌年
         <tr>
           <th class="sticky-1 col-name">芸人</th>
           <th class="sticky-2 col-rank">順位</th>
-          {cols.map(k => <th class={colClassFor(k)}>{labelFor(k)}</th>)}
+          {cols.map((c:any) => <th class={c.col_class ?? ""}>{c.label ?? c.key}</th>)}
         </tr>
       </thead>
       <tbody>
@@ -145,12 +141,12 @@ const nextYear = i >= 0 && i < years.length-1 ? years[i+1] : null; // 翌年
             <td class="sticky-2 col-rank">
               <span class="badge" data-ranksort={r.rank_sort}>{r.rank}</span>
             </td>
-            {cols.map((k) => {
-              const text = normalizeCellValue(k, r[k]);
-              const cls  = [colClassFor(k), MULTILINE_KEYS.has(k) ? "multiline" : ""].filter(Boolean).join(" ");
-              if (isTitleKey(k)) {
-                const movieKey = relatedMovieKeyForTitle(k);
-                const url = movieKey ? normalizeCellValue(movieKey, r[movieKey]) : "";
+            {cols.map((c:any) => {
+              const v = r[c.key];
+              const text = v == null ? "" : String(v);
+              const cls  = [c.col_class ?? "", c.is_multiline === 1 ? "multiline" : ""].filter(Boolean).join(" ");
+              if (c.related_key) {
+                const url = r[c.related_key] ? String(r[c.related_key]) : "";
                 const isYouTube = !!url && /(?:^https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\//i.test(url);
                 return (
                   <td class={cls}>

@@ -1,7 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
 import { listTargetComedianIds, getComedianTables } from "../../lib/queries";
-import { orderColumns, labelFor, MULTILINE_KEYS, normalizeCellValue, relatedMovieKeyForTitle, isTitleKey, colClassFor } from "../../lib/columns";
 
 const base = import.meta.env.BASE_URL;
 
@@ -14,7 +13,51 @@ const { id } = Astro.params as { id: string };
 const data = getComedianTables(id);
 if (!data) throw new Error("該当データなし");
 const { comedian, byComp } = data;
+
+/** 大会ごとに「列メタのユニオン」「全年の行」を事前計算 */
+type ColumnMeta = {
+  key: string;
+  label?: string | null;
+  pref_order?: number | null;
+  is_multiline?: 0 | 1 | null;
+  col_class?: string | null;
+  related_key?: string | null;
+};
+type Section = {
+  comp: string;
+  competition_name: string;
+  columns: ColumnMeta[];
+  rows: any[];
+};
+
+function unionColumns(colsArrays: ColumnMeta[][]): ColumnMeta[] {
+  const seen = new Set<string>();
+  const out: ColumnMeta[] = [];
+  for (const arr of colsArrays) {
+    for (const c of arr) {
+      if (seen.has(c.key)) continue;
+      seen.add(c.key);
+      out.push(c);
+    }
+  }
+  // 並び：pref_order → key 安定化
+  out.sort((a, b) => {
+    const ap = a.pref_order ?? 9_999_999;
+    const bp = b.pref_order ?? 9_999_999;
+    return ap !== bp ? ap - bp : String(a.key).localeCompare(String(b.key));
+  });
+  return out;
+}
+
+const sections: Section[] = Object.entries(byComp).map(([comp, block]: any) => {
+  const columns = unionColumns(block.years.map((y: any) => y.columns));
+  const rows = block.years
+    .flatMap((y: any) => y.rows)
+    .sort((a: any, b: any) => (a.year == null ? 1 : b.year == null ? -1 : b.year - a.year));
+  return { comp, competition_name: block.competition_name, columns, rows };
+});
 ---
+
 <Base title={`${comedian.name} の戦績`}>
   <nav class="breadcrumbs">
     <a href={base}>トップ</a><span class="sep">/</span>
@@ -23,79 +66,83 @@ const { comedian, byComp } = data;
   </nav>
 
   <h1>{comedian.name} の戦績</h1>
-  <!-- <h1>
-    <ruby>
-      {comedian.name}
-      {comedian.reading && <rt>{comedian.reading}</rt>}
-    </ruby>
-    の戦績
-  </h1> -->
-  {comedian.reading && (
-    <p class="reading muted">{comedian.reading}</p>
-  )}
+  {comedian.reading && <p class="reading muted">{comedian.reading}</p>}
 
-  {Object.entries(byComp).map(([comp, block]: any) => {
-    const cols = orderColumns(block.extraKeys);
-    return (
-      <section>
-        <h2>{block.competition_name}</h2>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th class="sticky-1 col-year">回</th>
-                <th class="col-rank">順位</th>
-                {cols.map((k: string) => <th class={colClassFor(k)}>{labelFor(k)}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {block.rows.map((r: any) => {
-                const label = r.short_label ?? (r.year != null ? `${r.year}` : "—");
-                const linkable = r.year != null; // ルーティング都合
-                return (
-                  <tr>
-                    <td class="sticky-1 col-year">
-                      {linkable
-                        ? <a href={`${base}${comp}/${r.year}`}>{label}</a>
-                        : <span class="muted">{label}</span>}
-                    </td>
-                    <td class="sticky-2 col-rank"><span class="badge" data-ranksort={r.rank_sort}>{r.rank}</span></td>
-                    {cols.map((k) => {
-                      const text = normalizeCellValue(k, r[k]);
-                      const cls  = [colClassFor(k), MULTILINE_KEYS.has(k) ? "multiline" : ""].filter(Boolean).join(" ");
+  {sections.map((sec) => (
+    <section>
+      <h2>{sec.competition_name}</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th class="sticky-1 col-year">回</th>
+              <th class="sticky-2 col-rank">順位</th>
+              {sec.columns.map((c) => (
+                <th class={c.col_class ?? ""}>{c.label ?? c.key}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {sec.rows.map((r: any) => {
+              const label = r.short_label ?? (r.year != null ? `${r.year}` : "—");
+              const linkable = r.year != null;
+              return (
+                <tr>
+                  <td class="sticky-1 col-year">
+                    {linkable ? (
+                      <a href={`${base}${sec.comp}/${r.year}`}>{label}</a>
+                    ) : (
+                      <span class="muted">{label}</span>
+                    )}
+                  </td>
+                  <td class="sticky-2 col-rank">
+                    <span class="badge" data-ranksort={r.rank_sort}>{r.rank}</span>
+                  </td>
 
-                      if (isTitleKey(k)) {
-                        // 対応する _movie を探す
-                        const movieKey = relatedMovieKeyForTitle(k);
-                        const url = movieKey ? normalizeCellValue(movieKey, r[movieKey]) : "";
-                        const isYouTube = !!url && /(?:^https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\//i.test(url);
-                        return (
-                          <td class={cls}>
-                            {text}
-                            {url && " "}
-                            {url && (
-                              <a class={`video-link ${isYouTube ? "video-youtube" : ""}`}
-                                href={url} target="_blank" rel="noopener noreferrer"
-                                aria-label={isYouTube ? "YouTubeで見る" : "動画を見る"}>
-                                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                                  <path fill="currentColor"
-                                    d="M23.5 6.2a4 4 0 0 0-2.8-2.8C18.5 3 12 3 12 3S5.5 3 3.3 3.4A4 4 0 0 0 .5 6.2 41 41 0 0 0 0 12c0 2 .2 3.8.5 5.8a4 4 0 0 0 2.8 2.8C5.5 21 12 21 12 21s6.5 0 8.7-.4a4 4 0 0 0 2.8-2.8c.3-2 .5-3.8.5-5.8s-.2-3.8-.5-5.8ZM9.75 15.02V8.98L15.5 12l-5.75 3.02Z"/>
-                                </svg>
-                              </a>
-                            )}
-                          </td>
-                        );
-                      }
-                      // 通常セル
-                      return <td class={cls}>{text}</td>;
-                    })}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    );
-  })}
+                  {sec.columns.map((c) => {
+                    const v = r[c.key];
+                    const text = v == null ? "" : String(v);
+                    const cls = [c.col_class ?? "", c.is_multiline === 1 ? "multiline" : ""]
+                      .filter(Boolean)
+                      .join(" ");
+
+                    if (c.related_key) {
+                      const url = r[c.related_key] ? String(r[c.related_key]) : "";
+                      const isYouTube =
+                        !!url &&
+                        /(?:^https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\//i.test(url);
+                      return (
+                        <td class={cls}>
+                          {text}
+                          {url && " "}
+                          {url && (
+                            <a
+                              class={`video-link ${isYouTube ? "video-youtube" : ""}`}
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              aria-label={isYouTube ? "YouTubeで見る" : "動画を見る"}
+                            >
+                              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                <path
+                                  fill="currentColor"
+                                  d="M23.5 6.2a4 4 0 0 0-2.8-2.8C18.5 3 12 3 12 3S5.5 3 3.3 3.4A4 4 0 0 0 .5 6.2 41 41 0 0 0 0 12c0 2 .2 3.8.5 5.8a4 4 0 0 0 2.8 2.8C5.5 21 12 21 12 21s6.5 0 8.7-.4a4 4 0 0 0 2.8-2.8c.3-2 .5-3.8.5-5.8s-.2-3.8-.5-5.8ZM9.75 15.02V8.98L15.5 12l-5.75 3.02Z"
+                                />
+                              </svg>
+                            </a>
+                          )}
+                        </td>
+                      );
+                    }
+
+                    return <td class={cls}>{text}</td>;
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  ))}
 </Base>
