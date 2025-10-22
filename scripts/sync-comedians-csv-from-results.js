@@ -3,7 +3,8 @@
  * seed_csv/final_results.csv を元に、seed_csv/comedians.csv を同期・補完するツール。
  * - 既存(comedians.csv)に無い (name,number) を追加
  * - reading が未設定/空 かつ name が かな(ひら/カタ)のみ → 自動生成して埋める
- * - 記号（中黒・空白・括弧・ハイフン等）は reading 生成時に除去（長音「ー」は残す）
+ * - NFKC正規化や空白圧縮は行わない（基本は trim のみ）
+ * - kind / birth_date / formed_date をサポート（なければ空で出力）
  *
  * 実行例: npm run data:sync:comedians
  */
@@ -16,12 +17,12 @@ const SEED_DIR = "seed_csv";
 const CO_CSV   = path.join(SEED_DIR, "comedians.csv");
 const FR_CSV   = path.join(SEED_DIR, "final_results.csv");
 
-// -------- utils --------
-const canon = (s) => (s ?? "").normalize("NFKC").trim().replace(/\s+/g, " ");
+// ===== utils =====
+const trimOnly = (s) => (s ?? "").toString().trim();
 
 // かな判定（ひらがな/カタカナ/長音/読点等の一部のみ許容）
 const reKanaOnly = /^[\p{sc=Hiragana}\p{sc=Katakana}ー・･・\s]+$/u;
-const isKanaOnly = (s) => reKanaOnly.test(canon(s));
+const isKanaOnly = (s) => reKanaOnly.test(trimOnly(s));
 
 // カタカナ → ひらがな
 const toHiragana = (s) => s.replace(/[\u30A1-\u30F6]/g, (ch) =>
@@ -63,26 +64,33 @@ const writeCsv = (file, rows, header) => {
   fs.writeFileSync(file, csv, "utf8");
 };
 
-// -------- load --------
+// ===== load =====
 fs.mkdirSync(SEED_DIR, { recursive: true });
 
-const coRows = readCsv(CO_CSV); // name, number, reading(任意)
+const coRows = readCsv(CO_CSV); // name, number, reading, kind?, birth_date?, formed_date?
 const frRows = readCsv(FR_CSV); // comp,year,comedian_name,comedian_number,...
 
-// 既存 comedians.csv を Map 化（key = `${name}||${number|null}`)
-const keyOf = (name, number) => `${canon(name)}||${number === null ? "null" : Number(number)}`;
+// 既存 comedians.csv を Map 化（key = `${name}||${number|null}`）
+// ※ 正規化はしない。trim のみでキー化。
+const keyOf = (name, number) =>
+  `${trimOnly(name)}||${number === null ? "null" : Number(number)}`;
 
-// 既存行そのままの並びを保持（更新はこの配列へ反映）
-const outRows = [...coRows]; // [{ name, number, reading }, ...]
-// 既存キー -> 配列インデックス
+// 出力配列（既存の順を維持）
+const outRows = [...coRows];
+
+// 既存キー -> 配列インデックス＋現行値
 const existing = new Map();
-
 for (let i = 0; i < coRows.length; i++) {
-  const r = coRows[i];
-  const name = canon(r.name);
+  const r = coRows[i] ?? {};
+  const name = trimOnly(r.name);
   const num  = r.number === "" || r.number == null ? null : Number(r.number);
-  const reading = toNullable(r.reading);
-  existing.set(keyOf(name, num), { index: i, name, number: num, reading });
+  const reading     = toNullable(r.reading);
+  const kind        = toNullable(r.kind);
+  const birth_date  = toNullable(r.birth_date);
+  const formed_date = toNullable(r.formed_date);
+  existing.set(keyOf(name, num), {
+    index: i, name, number: num, reading, kind, birth_date, formed_date
+  });
 }
 
 // final_results の distinct (name, number) を走査
@@ -90,36 +98,43 @@ const seen = new Set();
 let inserted = 0, readingUpdated = 0;
 
 for (const r of frRows) {
-  const name = canon(r.comedian_name);
+  const name = trimOnly(r.comedian_name);
   const num  = r.comedian_number === "" || r.comedian_number == null ? null : Number(r.comedian_number);
+  if (!name) continue;
+
   const k = keyOf(name, num);
   if (seen.has(k)) continue;
   seen.add(k);
 
   const row = existing.get(k);
   if (!row) {
-    // 追加作成
+    // reading を自動補完（かな名のみ）
     let reading = null;
     if (isKanaOnly(name)) {
       const hira = toHiragana(name);
-      reading = stripSymbolsForReading(hira);
-      if (reading === "") reading = null;
+      let guess = stripSymbolsForReading(hira);
+      if (guess === "") guess = null;
+      reading = guess;
     }
-    // 末尾に追記（新規は一番下へ）
     const newIndex = outRows.length;
     outRows.push({
-      name, 
+      name,
       number: num == null ? "" : String(num),
-      reading: reading ?? ""
+      reading: reading ?? "",
+      kind: "",          // 追加列は空で出力（入力者が埋めやすいように）
+      birth_date: "",
+      formed_date: ""
     });
-    existing.set(k, { index: newIndex, name, number: num, reading });
+    existing.set(k, {
+      index: newIndex,
+      name, number: num, reading, kind: null, birth_date: null, formed_date: null
+    });
     inserted++;
   } else {
-    // 既存で reading が空なら自動補完を試みる
+    // 既存で reading が空なら自動補完を試みる（かな名のみ）
     if (!row.reading && isKanaOnly(row.name)) {
       const hira = toHiragana(row.name);
       let guess = stripSymbolsForReading(hira);
-      if (guess === "") guess = null;
       if (guess) {
         row.reading = guess; // Map側のメモ
         // 実体（配列）も更新
@@ -136,8 +151,139 @@ for (const r of frRows) {
   }
 }
 
-// 出力：読み込んだ順 + 追記分（並べ替えなし）
-const header = ["name", "number", "reading"];
+// ヘッダは固定（既存ファイルに列が無くても追加）
+const header = ["name", "number", "reading", "kind", "birth_date", "formed_date"];
+
+// 既存行に足りない列を追加（空文字で揃える）
+for (let i = 0; i < outRows.length; i++) {
+  const r = outRows[i] ?? {};
+  for (const col of header) {
+    if (!(col in r)) r[col] = "";
+  }
+}
+
 writeCsv(CO_CSV, outRows, header);
 
 console.log(`sync-comedians-csv: inserted=${inserted}, reading_filled=${readingUpdated}, total=${outRows.length}`);
+
+// ============ 表記揺れ候補の警告（台帳は変更しない） ============
+(function warnForSpellingVariants() {
+  // 1) ユーティリティ（このブロックだけで完結）
+  const toHiragana = (s) => s.replace(/[\u30A1-\u30F6]/g, ch =>
+    String.fromCharCode(ch.charCodeAt(0) - 0x60)
+  );
+  // 「ゆるいキー」: NFKC→トリム→カタカナ→ひらがな→空白/一部記号の除去→全角半角の差吸収
+  const fuzzyKey = (raw) => {
+    const s0 = String(raw ?? "").normalize("NFKC").trim();
+    const s1 = toHiragana(s0);
+    // 空白/中黒/小中黒/括弧/句読点/スラッシュ/ハイフン類/アンダーは落とす
+    const s2 = s1
+      .replace(/[\s\u3000]/g, "")
+      .replace(/[・･·\u30FB\uFF65]/g, "")
+      .replace(/[()\[\]{}「」『』【】〈〉《》]/g, "")
+      .replace(/[.,，．\/／]/g, "")
+      .replace(/[-_—–―]/g, "");
+    return s2;
+  };
+  // ふつうのレーベンシュタイン距離（小さな比較なので十分速い）
+  function levenshtein(a, b) {
+    const s = String(a), t = String(b);
+    const m = s.length, n = t.length;
+    if (m === 0) return n;
+    if (n === 0) return m;
+    const dp = new Array(n + 1);
+    for (let j = 0; j <= n; j++) dp[j] = j;
+    for (let i = 1; i <= m; i++) {
+      let prev = dp[0];
+      dp[0] = i;
+      for (let j = 1; j <= n; j++) {
+        const tmp = dp[j];
+        dp[j] = Math.min(
+          dp[j] + 1,                  // 削除
+          dp[j - 1] + 1,              // 挿入
+          prev + (s[i - 1] === t[j - 1] ? 0 : 1) // 置換
+        );
+        prev = tmp;
+      }
+    }
+    return dp[n];
+  }
+
+  // 2) チェック対象データ（同期後の outRows を使用）
+  //    number は "" を null 相当に
+  const canonNum = (v) => (v === "" || v == null ? null : Number(v));
+  const rows = outRows.map(r => ({
+    name: r.name,
+    number: canonNum(r.number),
+  }));
+
+  // 3) 強い候補: fuzzyKey が同じなのに raw name が複数（number も同じグループ内で比較）
+  const collisions = []; // { number, key, names:Set<string> }
+  {
+    // map[number] -> map[fuzzy] -> Set<raw>
+    const byNum = new Map();
+    for (const r of rows) {
+      const num = r.number === null ? "null" : String(r.number);
+      const f = fuzzyKey(r.name);
+      if (!byNum.has(num)) byNum.set(num, new Map());
+      const bucket = byNum.get(num);
+      if (!bucket.has(f)) bucket.set(f, new Set());
+      bucket.get(f).add(r.name);
+    }
+    for (const [num, mp] of byNum) {
+      for (const [f, set] of mp) {
+        if (set.size >= 2) {
+          collisions.push({ number: num, key: f, names: Array.from(set) });
+        }
+      }
+    }
+  }
+
+  // 4) 弱い候補: 同じ number 内で、NFKC+trim した文字列の編集距離が 1 以下の組
+  const nearPairs = []; // { number, a, b, dist }
+  {
+    const byNum = new Map();
+    for (const r of rows) {
+      const num = r.number === null ? "null" : String(r.number);
+      if (!byNum.has(num)) byNum.set(num, []);
+      byNum.get(num).push(r.name);
+    }
+    for (const [num, names] of byNum) {
+      // ユニーク化（同名重複は無視）
+      const uniq = Array.from(new Set(names));
+      for (let i = 0; i < uniq.length; i++) {
+        for (let j = i + 1; j < uniq.length; j++) {
+          const a = uniq[i].normalize("NFKC").trim();
+          const b = uniq[j].normalize("NFKC").trim();
+          // まったく同じならスキップ（ここは “近い” 判定なので）
+          if (a === b) continue;
+          const d = levenshtein(a, b);
+          if (d <= 1) nearPairs.push({ number: num, a: uniq[i], b: uniq[j], dist: d });
+        }
+      }
+    }
+  }
+
+  // 5) 出力
+  if (collisions.length === 0 && nearPairs.length === 0) {
+    console.log("dupe-check: no spelling-variant candidates.");
+    return;
+  }
+  console.warn("===== spelling-variant candidates (please review comedians.csv) =====");
+
+  if (collisions.length) {
+    console.warn("[strong] same fuzzy key within same (name,number) group:");
+    for (const c of collisions) {
+      const numLabel = c.number === "null" ? "(number: null)" : `(number: ${c.number})`;
+      console.warn(`  - ${numLabel}  key="${c.key}"  ->  ${c.names.join(" / ")}`);
+    }
+  }
+
+  if (nearPairs.length) {
+    console.warn("[weak ] small edit distance (<=1) within same number:");
+    for (const p of nearPairs) {
+      const numLabel = p.number === "null" ? "(number: null)" : `(number: ${p.number})`;
+      console.warn(`  - ${numLabel}  "${p.a}"  ~  "${p.b}"  (dist=${p.dist})`);
+    }
+  }
+})();

@@ -105,6 +105,15 @@ function normalizeIntOrNull(raw) {
   return Math.trunc(Number(s));
 }
 
+// kind 正準化ヘルパ（1文字略記対応）
+function normalizeKind(raw) {
+  if (raw == null) return null;
+  const s = String(raw).trim().toLowerCase();
+  if (s === "p" || s === "person") return "person";
+  if (s === "u" || s === "unit")   return "unit";
+  return null; // 不明はNULLで取り込む（後から補完可）
+}
+
 /* ============================= CSV 読み込み ============================= */
 // 空でも進む。空なら該当テーブルは0件で終わるだけ。
 const competitions       = readCsv("competitions.csv");     // key,name,sort_order?
@@ -114,6 +123,7 @@ const results            = readCsv("final_results.csv");    // comp,year,comedia
 const judgesCsv          = readCsv("judges.csv");           // name
 const editionJudgesCsv   = readCsv("edition_judges.csv");   // comp,year,seat_no,judge_name
 const judgeScoresCsv     = readCsv("judge_scores.csv");     // comp,year,round_no,comedian_name,comedian_number,seat_no,score
+const membershipsCsv     = readCsv("memberships.csv");      // unit_name,unit_number,person_name,person_number
 
 /* ============================= final_results の動的列定義 ============================= */
 // 既知の基本キー以外の列を追加列として採用（型はヘッダ値から簡易推定）
@@ -182,13 +192,24 @@ db.transaction(() => {
 
     -- 芸人（(name,number)の複合ユニーク → TEXT主キー）
     CREATE TABLE comedians (
-      id      TEXT PRIMARY KEY,
-      name    TEXT NOT NULL,
-      number  INTEGER,
-      reading TEXT,                       -- ひらがな
+      id          TEXT PRIMARY KEY,
+      name        TEXT NOT NULL,
+      number      INTEGER,
+      reading     TEXT,                                    -- ひらがな
+      kind        TEXT CHECK (kind IN ('person','unit')),  -- NULL許容
+      birth_date  TEXT,                                    -- 個人向け 'YYYY-MM-DD'
+      formed_date TEXT,                                    -- ユニット向け 'YYYY-MM-DD'
       UNIQUE (name, number)
     );
     CREATE INDEX idx_co_name_num ON comedians(name, number);
+
+    -- 芸人のユニット所属関係
+    CREATE TABLE memberships (
+      unit_id   TEXT NOT NULL REFERENCES comedians(id),
+      person_id TEXT NOT NULL REFERENCES comedians(id),
+      PRIMARY KEY (unit_id, person_id)
+    );
+    CREATE INDEX idx_memberships_person ON memberships(person_id);
   `);
 
   // final_results は動的列を含めてDDLを生成
@@ -243,7 +264,9 @@ db.transaction(() => {
     WHERE c.key=? AND e.year=? LIMIT 1
   `);
   const selCoByNameNum = db.prepare(`
-    SELECT id FROM comedians WHERE name=? AND ((number IS NULL AND ? IS NULL) OR number=?) LIMIT 1
+    SELECT id, kind FROM comedians
+    WHERE name=? AND ((number IS NULL AND ? IS NULL) OR number=?)
+    LIMIT 1
   `);
   const hasNullNumber = db.prepare(`SELECT 1 FROM comedians WHERE name=? AND number IS NULL LIMIT 1`);
   const maxNumber     = db.prepare(`SELECT MAX(number) AS n FROM comedians WHERE name=? AND number IS NOT NULL`);
@@ -257,8 +280,21 @@ db.transaction(() => {
     SELECT c.id, @year, @title, @seq, @date, @label FROM competitions c WHERE c.key=@comp
   `);
   const insCo = db.prepare(`
-    INSERT INTO comedians(id, name, number, reading) VALUES (?, ?, ?, ?)
-    ON CONFLICT(name, number) DO NOTHING
+    INSERT INTO comedians (id, name, number, reading, kind, birth_date, formed_date)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      -- 既存優先：CSV側がNULLなら上書きしない
+      name        = excluded.name,
+      number      = excluded.number,
+      reading     = COALESCE(comedians.reading,     excluded.reading),
+      kind        = COALESCE(comedians.kind,        excluded.kind),
+      birth_date  = COALESCE(comedians.birth_date,  excluded.birth_date),
+      formed_date = COALESCE(comedians.formed_date, excluded.formed_date)
+  `);
+  const insMembership = db.prepare(`
+    INSERT INTO memberships(unit_id, person_id)
+    VALUES (?, ?)
+    ON CONFLICT(unit_id, person_id) DO NOTHING
   `);
   const insFR = (() => {
     const cols = ["edition_id","comedian_id","rank","rank_sort", ...extraCols];
@@ -303,7 +339,56 @@ db.transaction(() => {
     const num  = (r.number === "" || r.number == null) ? null : Number(r.number);
     const id   = makeId(name, num);
     const reading = toNullable(trimOnly(r.reading));
-    insCo.run(id, name, num, reading);
+
+    const kind = normalizeKind(r.kind);
+    const birthDate  = toNullable(r.birth_date);
+    const formedDate = toNullable(r.formed_date);
+
+    // 例：不足時の自動作成
+    insCo.run(id, name, num, reading ?? null, kind ?? null, birthDate ?? null, formedDate ?? null);
+  }
+
+  // memberships 投入
+  for (const r of membershipsCsv) {
+    const uName = String(r.unit_name ?? "").trim();
+    const uNum  = (r.unit_number === "" || r.unit_number == null) ? null : Number(r.unit_number);
+    const pName = String(r.person_name ?? "").trim();
+    const pNum  = (r.person_number === "" || r.person_number == null) ? null : Number(r.person_number);
+
+    if (!uName || !pName) continue;
+
+    // ユニット側を解決（なければ作成：kind='unit' で）
+    let u = selCoByNameNum.get(uName, uNum, uNum); // => { id, kind } | undefined
+    if (!u) {
+      const uid = makeId(uName, uNum);
+      insCo.run(uid, uName, uNum, /*reading*/ null, /*kind*/ "unit", /*birth*/ null, /*formed*/ null);
+      u = selCoByNameNum.get(uName, uNum, uNum);
+    } else if (u.kind == null) {
+      db.prepare(`UPDATE comedians SET kind='unit' WHERE id=? AND kind IS NULL`).run(u.id);
+      u.kind = "unit";
+    }
+
+    // 個人側を解決（なければ作成：kind='person' で）
+    let p = selCoByNameNum.get(pName, pNum, pNum);
+    if (!p) {
+      const pid = makeId(pName, pNum);
+      insCo.run(pid, pName, pNum, /*reading*/ null, /*kind*/ "person", /*birth*/ null, /*formed*/ null);
+      p = selCoByNameNum.get(pName, pNum, pNum);
+    } else if (p.kind == null) {
+      db.prepare(`UPDATE comedians SET kind='person' WHERE id=? AND kind IS NULL`).run(p.id);
+      p.kind = "person";
+    }
+
+    // 厳格チェック（要件どおり：不整合ならエラーで止める）
+    if (u.kind === "person") {
+      throw new Error(`memberships: unit "${uName}"(number=${uNum ?? "NULL"}) が person になっています`);
+    }
+    if (p.kind === "unit") {
+      throw new Error(`memberships: person "${pName}"(number=${pNum ?? "NULL"}) が unit になっています`);
+    }
+
+    // 登録
+    insMembership.run(u.id, p.id);
   }
 
   // final_results
@@ -324,7 +409,7 @@ db.transaction(() => {
                  : null;
       const id = makeId(name, next);
       const guess = isKanaOnly(name) ? toHiragana(name) : null;
-      insCo.run(id, name, next, guess);
+      insCo.run(id, name, next, /*reading*/ guess ?? null, /*kind*/ null, /*birth*/ null, /*formed*/ null);
       coRow = selCoByNameNum.get(name, next, next);
     }
     const rankText = String(r.rank);
@@ -389,7 +474,7 @@ db.transaction(() => {
                  : nullExists ? (maxNumber.get(name)?.n ?? 1) + 1
                  : null;
       const id = makeId(name, next);
-      insCo.run(id, name, next, null);
+      insCo.run(id, name, next, /*reading*/ null, /*kind*/ null, /*birth*/ null, /*formed*/ null);
       co = selCoByNameNum.get(name, next, next);
     }
 

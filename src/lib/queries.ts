@@ -335,3 +335,25 @@ export function listEditionYears(comp: string): number[] {
   `).all(comp) as { year:number }[];
   return rows.map(r => r.year);
 }
+
+/* メンバーシップ情報 */
+export function getUnitMembers(unitId: string) {
+  return db().prepare(`
+    SELECT co.id, co.name, co.reading, co.kind
+    FROM memberships m
+    JOIN comedians co ON co.id = m.person_id
+    WHERE m.unit_id = ?
+    ORDER BY COALESCE(co.reading, co.name)
+  `).all(unitId);
+}
+
+/* 所属ユニット情報 */
+export function getPersonUnits(personId: string) {
+  return db().prepare(`
+    SELECT u.id, u.name, u.reading, u.kind
+    FROM memberships m
+    JOIN comedians u ON u.id = m.unit_id
+    WHERE m.person_id = ?
+    ORDER BY COALESCE(u.reading, u.name)
+  `).all(personId);
+}
