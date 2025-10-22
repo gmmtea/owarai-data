@@ -21,12 +21,11 @@ if (NO_RESET) {
 fs.mkdirSync("data", { recursive: true });
 
 /* ============================= ユーティリティ ============================= */
-// 文字正規化: NFKC + 余分な空白の圧縮
-const canon = (s) => (s ?? "").normalize("NFKC").trim().replace(/\s+/g, " ");
+const trimOnly = (s) => (s ?? "").toString().trim();
 
 // (name, number) から決定的ID（sha256先頭20hex=80bit）
 const makeId = (name, number /* number|null */) => {
-  const left  = canon(name);
+  const left  = trimOnly(name);
   const right = (number == null || number === "") ? "" : `_${String(Number(number))}`;
   const base  = `${left}${right}`;
   return crypto.createHash("sha256").update(base, "utf8").digest("hex").slice(0, 20);
@@ -34,7 +33,7 @@ const makeId = (name, number /* number|null */) => {
 
 // judges用のID（名前のみで決定）
 const makeJudgeId = (name) =>
-  crypto.createHash("sha256").update(canon(name), "utf8").digest("hex").slice(0, 20);
+  crypto.createHash("sha256").update(trimOnly(name), "utf8").digest("hex").slice(0, 20);
 
 // 列名バリデーション（final_resultsの動的列）
 const isSafeCol = (name) => /^[a-z0-9_]+$/.test(name);
@@ -52,7 +51,7 @@ const readCsv = (name) => {
 
 // かな判定（ひら/カナ＋長音・中点・空白）
 const reKanaOnly = /^[\p{sc=Hiragana}\p{sc=Katakana}ー・\s]+$/u;
-const isKanaOnly = (s) => reKanaOnly.test(canon(s));
+const isKanaOnly = (s) => reKanaOnly.test(trimOnly(s));
 // カタカナ→ひらがな
 const toHiragana = (s) => s.replace(/[\u30A1-\u30F6]/g, ch =>
   String.fromCharCode(ch.charCodeAt(0) - 0x60)
@@ -60,7 +59,7 @@ const toHiragana = (s) => s.replace(/[\u30A1-\u30F6]/g, ch =>
 // 読みの正規化（ひらがな寄せ）
 const normalizeReading = (s) => {
   if (s == null) return null;
-  const t = canon(String(s));
+  const t = trimOnly(String(s));
   if (t === "") return null;
   return toHiragana(t);
 };
@@ -95,11 +94,6 @@ const toNullable = (x) => {
 };
 
 // グループ名はユーザー定義の任意文字列を許可（NFKC＋trimのみ）
-function normalizeFirstGroup(raw) {
-  if (raw == null) return null;
-  const s = String(raw).normalize("NFKC").trim();
-  return s === "" ? null : s;  // 空文字はNULL、それ以外は無加工で保存
-}
 function normalizeIntOrNull(raw) {
   if (raw == null) return null;
   const s = String(raw).trim();
@@ -305,12 +299,11 @@ db.transaction(() => {
 
   // comedians（初期マスタ）
   for (const r of comediansCsv) {
-    const name = canon(r.name);
+    const name = trimOnly(r.name);
     const num  = (r.number === "" || r.number == null) ? null : Number(r.number);
     const id   = makeId(name, num);
-    const readingCsv = normalizeReading(r.reading);
-    const readingGuess = (!readingCsv && isKanaOnly(name)) ? toHiragana(name) : readingCsv;
-    insCo.run(id, name, num, readingGuess ?? null);
+    const reading = toNullable(trimOnly(r.reading));
+    insCo.run(id, name, num, reading);
   }
 
   // final_results
@@ -318,7 +311,7 @@ db.transaction(() => {
     const ed = selEdByCompYear.get(r.comp, Number(r.year));
     if (!ed) throw new Error(`edition not found: ${r.comp} ${r.year}`);
 
-    const name = canon(r.comedian_name);
+    const name = trimOnly(r.comedian_name);
     const numberFromCsv = ("comedian_number" in r && r.comedian_number !== "" && r.comedian_number != null)
       ? Number(r.comedian_number) : null;
 
@@ -338,7 +331,7 @@ db.transaction(() => {
     const rankSort = computeRankSort(rankText);
 
     // --- 1本目: CSVは分離済みを想定。軽い正規化のみ ---
-    const first_group = normalizeFirstGroup(r.first_group);
+    const first_group = toNullable(trimOnly(r.first_group));
     const first_order = normalizeIntOrNull(r.first_order);
 
     const params = {
@@ -358,7 +351,7 @@ db.transaction(() => {
 
   // judges
   for (const r of judgesCsv) {
-    const name = canon(r.name);
+    const name = trimOnly(r.name);
     if (!name) continue;
     const id = makeJudgeId(name);
     insJudge.run(id, name);
@@ -369,7 +362,7 @@ db.transaction(() => {
     const ed = selEdByCompYear.get(r.comp, Number(r.year));
     if (!ed) throw new Error(`edition not found: ${r.comp} ${r.year}`);
     const seatNo = Number(r.seat_no);
-    const jname  = canon(r.judge_name);
+    const jname  = trimOnly(r.judge_name);
     if (!jname || !Number.isFinite(seatNo)) continue;
     const jid = makeJudgeId(jname);
     insJudge.run(jid, jname);                 // 無ければ入る、あればNO-OP
@@ -385,7 +378,7 @@ db.transaction(() => {
     const seatNo  = Number(r.seat_no);
     if (!Number.isFinite(roundNo) || !Number.isFinite(seatNo)) continue;
 
-    const name = canon(r.comedian_name);
+    const name = trimOnly(r.comedian_name);
     const numberFromCsv = ("comedian_number" in r && r.comedian_number !== "" && r.comedian_number != null)
       ? Number(r.comedian_number) : null;
 
