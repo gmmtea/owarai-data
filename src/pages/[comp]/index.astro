@@ -47,7 +47,9 @@ const compName = list.find(x=>x.table)?.table?.edition.competition_name ?? "å¤§ä
               <tbody>
                 {table.rows.map((r: any) => (
                   <tr>
-                    <td class="sticky-1 col-name"><a href={`${base}co/${r.comedian_id}`}>{r.name}</a></td>
+                    <td class="sticky-1 col-name">
+                      <a href={`${base}co/${r.link_id}`}>{r.name}</a>
+                    </td>
                     <td class="sticky-2 col-rank"><span class="badge" data-ranksort={r.rank_sort}>{r.rank}</span></td>
                     {cols.map((c: any) => {
                       const v = r[c.key];

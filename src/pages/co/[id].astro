@@ -73,15 +73,16 @@ const sections: Section[] = Object.entries(byComp).map(([comp, block]: any) => {
       <h2>{sec.competition_name}</h2>
       <div class="table-wrap">
         <table>
-          <thead>
-            <tr>
-              <th class="sticky-1 col-year">回</th>
-              <th class="sticky-2 col-rank">順位</th>
-              {sec.columns.map((c) => (
-                <th class={c.col_class ?? ""}>{c.label ?? c.key}</th>
-              ))}
-            </tr>
-          </thead>
+        <thead>
+          <tr>
+            <th class="sticky-1 col-year">回</th>
+            <th class="sticky-2 col-rank">順位</th>
+            {sec.columns.map((c) => (
+              <th class={c.col_class ?? ""}>{c.label ?? c.key}</th>
+            ))}
+            <th class="col-alias">名義</th>
+          </tr>
+        </thead>
           <tbody>
             {sec.rows.map((r: any) => {
               const label = r.short_label ?? (r.year != null ? `${r.year}` : "—");
@@ -98,7 +99,6 @@ const sections: Section[] = Object.entries(byComp).map(([comp, block]: any) => {
                   <td class="sticky-2 col-rank">
                     <span class="badge" data-ranksort={r.rank_sort}>{r.rank}</span>
                   </td>
-
                   {sec.columns.map((c) => {
                     const v = r[c.key];
                     const text = v == null ? "" : String(v);
@@ -148,6 +148,7 @@ const sections: Section[] = Object.entries(byComp).map(([comp, block]: any) => {
 
                     return <td class={cls}>{text}</td>;
                   })}
+                  <td class="col-alias">{r.alias_label /* 代表なら空文字 */}</td>
                 </tr>
               );
             })}

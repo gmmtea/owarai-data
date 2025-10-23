@@ -199,9 +199,11 @@ db.transaction(() => {
       kind        TEXT CHECK (kind IN ('person','unit')),  -- NULL許容
       birth_date  TEXT,                                    -- 個人向け 'YYYY-MM-DD'
       formed_date TEXT,                                    -- ユニット向け 'YYYY-MM-DD'
+      canonical_id TEXT REFERENCES comedians(id),
       UNIQUE (name, note)
     );
     CREATE INDEX idx_co_name_note ON comedians(name, note);
+    CREATE INDEX idx_co_canonical ON comedians(canonical_id);
 
     -- 芸人のユニット所属関係
     CREATE TABLE memberships (
@@ -339,6 +341,29 @@ db.transaction(() => {
     const birthDate  = toNullable(r.birth_date);
     const formedDate = toNullable(r.formed_date);
     insCo.run(id, name, note, reading ?? null, kind ?? null, birthDate ?? null, formedDate ?? null);
+  }
+
+  const selCoIdByNameNote = db.prepare(`
+    SELECT id FROM comedians WHERE name=? AND ((note IS NULL AND ? IS NULL) OR note=?)
+  `);
+  const updCanonical = db.prepare(`UPDATE comedians SET canonical_id=? WHERE id=?`);
+
+  for (const r of comediansCsv) {
+    const name = trimOnly(r.name);
+    const note = toNullable(trimOnly(r.note));
+    const meId = makeId(name, note);
+
+    const cName = toNullable(trimOnly(r.canonical_name));
+    const cNote = toNullable(trimOnly(r.canonical_note));
+    if (cName) {
+      const root = selCoIdByNameNote.get(cName, cNote, cNote);
+      if (!root) {
+        throw new Error(`[canonical] 代表名が見つかりません: name="${cName}", note=${cNote ?? "NULL"}`);
+      }
+      if (root.id !== meId) {
+        updCanonical.run(root.id, meId);
+      }
+    }
   }
 
   // memberships 投入

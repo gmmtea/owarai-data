@@ -137,7 +137,9 @@ const nextYear = i >= 0 && i < years.length-1 ? years[i+1] : null; // 翌年
       <tbody>
         {rows.map(r => (
           <tr>
-            <td class="sticky-1 col-name"><a href={`${base}co/${r.comedian_id}`}>{r.name}</a></td>
+            <td class="sticky-1 col-name">
+              <a href={`${base}co/${r.link_id}`}>{r.name}</a>
+            </td>
             <td class="sticky-2 col-rank">
               <span class="badge" data-ranksort={r.rank_sort}>{r.rank}</span>
             </td>

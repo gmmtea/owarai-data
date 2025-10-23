@@ -235,6 +235,9 @@ tbody tr:hover{ background:#fff8f1 }
 .col-title  { min-width: 160px }
 .col-score  { min-width: 56px; text-align: right; font-variant-numeric: tabular-nums }
 .col-total  { min-width: 64px; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums }
+.col-alias  {
+  min-width: 200px;
+}
 
 /* 改行(\n)を行として表示（プレーンテキストの複数行表示に） */
 .multiline{ white-space: pre-line }
