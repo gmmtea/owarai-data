@@ -28,6 +28,7 @@ type Section = {
   competition_name: string;
   columns: ColumnMeta[];
   rows: any[];
+  showAlias: boolean;
 };
 
 function unionColumns(colsArrays: ColumnMeta[][]): ColumnMeta[] {
@@ -49,12 +50,57 @@ function unionColumns(colsArrays: ColumnMeta[][]): ColumnMeta[] {
   return out;
 }
 
+// 文字列が非空かどうか
+function isNonEmptyString(v: unknown) {
+  return typeof v === "string" ? v.trim() !== "" : v != null;
+}
+
+// 列 c が rows の中で1行でも“表示有り”なら true
+function columnIsVisible(c: ColumnMeta, rows: any[]) {
+  for (const r of rows) {
+    // first_order は数値があれば表示（A-2番 の A は first_group 次第だが、数値無ければ空）
+    if (c.key === "first_order") {
+      const v = r[c.key];
+      if (v !== null && v !== undefined && String(v).trim() !== "") return true;
+      continue;
+    }
+
+    // 連動動画列がある場合は、テキスト or URL のどちらかが埋まっていれば“有り”
+    if (c.related_key) {
+      const text = r[c.key];
+      const url  = r[c.related_key];
+      if (isNonEmptyString(text) || isNonEmptyString(url)) return true;
+      continue;
+    }
+
+    // 通常列
+    if (isNonEmptyString(r[c.key])) return true;
+  }
+  return false;
+}
+
+// セクション生成
 const sections: Section[] = Object.entries(byComp).map(([comp, block]: any) => {
-  const columns = unionColumns(block.years.map((y: any) => y.columns));
+  const columnsAllYears = block.years.map((y: any) => y.columns);
+  const columns = unionColumns(columnsAllYears);
+
   const rows = block.years
     .flatMap((y: any) => y.rows)
     .sort((a: any, b: any) => (a.year == null ? 1 : b.year == null ? -1 : b.year - a.year));
-  return { comp, competition_name: block.competition_name, columns, rows };
+
+  // ここで“全行空”の列を落とす
+  const visibleColumns = columns.filter((c) => columnIsVisible(c, rows));
+
+  // 名義列（alias_label）も全行空なら非表示
+  const showAlias = rows.some((r: any) => typeof r.alias_label === "string" && r.alias_label.trim() !== "");
+
+  return {
+    comp,
+    competition_name: block.competition_name,
+    columns: visibleColumns,
+    rows,
+    showAlias,
+  } as any;
 });
 ---
 
@@ -73,16 +119,16 @@ const sections: Section[] = Object.entries(byComp).map(([comp, block]: any) => {
       <h2>{sec.competition_name}</h2>
       <div class="table-wrap">
         <table>
-        <thead>
-          <tr>
-            <th class="sticky-1 col-year">回</th>
-            <th class="sticky-2 col-rank">順位</th>
-            {sec.columns.map((c) => (
-              <th class={c.col_class ?? ""}>{c.label ?? c.key}</th>
-            ))}
-            <th class="col-alias">名義</th>
-          </tr>
-        </thead>
+          <thead>
+            <tr>
+              <th class="sticky-1 col-year">回</th>
+              <th class="sticky-2 col-rank">順位</th>
+              {sec.columns.map((c) => (
+                <th class={c.col_class ?? ""}>{c.label ?? c.key}</th>
+              ))}
+              {sec.showAlias && <th class="col-alias">名義</th>}
+            </tr>
+          </thead>
           <tbody>
             {sec.rows.map((r: any) => {
               const label = r.short_label ?? (r.year != null ? `${r.year}` : "—");
@@ -109,7 +155,7 @@ const sections: Section[] = Object.entries(byComp).map(([comp, block]: any) => {
                     // 1本目出順は「A-2番」形式で表示（first_group があれば先頭に付ける）
                     if (c.key === "first_order") {
                       const ord = v;
-                      const grp = r["first_group"];           // ← queries 側で隠し列として入っている
+                      const grp = r["first_group"];  // queries 側で隠し列として入っている
                       const text =
                         ord == null || String(ord).trim() === ""
                           ? ""
@@ -148,7 +194,7 @@ const sections: Section[] = Object.entries(byComp).map(([comp, block]: any) => {
 
                     return <td class={cls}>{text}</td>;
                   })}
-                  <td class="col-alias">{r.alias_label /* 代表なら空文字 */}</td>
+                  {sec.showAlias && <td class="col-alias">{r.alias_label}</td>}
                 </tr>
               );
             })}
