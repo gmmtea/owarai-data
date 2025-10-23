@@ -366,6 +366,92 @@ db.transaction(() => {
     }
   }
 
+  // --- canonical の健全性チェック（自己参照・多段参照・循環参照） ---
+  // 表示用のラベル（name + [note]）
+  const id2label = new Map();
+  for (const r of db.prepare(`SELECT id, name, COALESCE(note,'') AS note FROM comedians`).all()) {
+    id2label.set(r.id, r.note ? `${r.name} [${r.note}]` : r.name);
+  }
+  const label = (id) => (id ? (id2label.get(id) || String(id)) : "NULL");
+
+  // 1) 自己参照: canonical_id = id
+  const selfRefs = db.prepare(`
+    SELECT id, name, note
+    FROM comedians
+    WHERE canonical_id = id
+  `).all();
+
+  // 2) 多段参照: 子→親→祖 になっている（親が代表ではない＝親にも canonical_id がある）
+  const multiHops = db.prepare(`
+    SELECT child.id AS child_id, child.name AS child_name, child.note AS child_note,
+           parent.id AS parent_id, parent.name AS parent_name, parent.note AS parent_note,
+           gp.id     AS gp_id,     gp.name     AS gp_name,     gp.note     AS gp_note
+    FROM comedians child
+    JOIN comedians parent ON parent.id = child.canonical_id
+    JOIN comedians gp     ON gp.id     = parent.canonical_id
+  `).all();
+
+  // 3) 循環参照検出: JS で DFS（A→B→…→A）
+  const canonicalPairs = db.prepare(`
+    SELECT id, canonical_id FROM comedians WHERE canonical_id IS NOT NULL
+  `).all();
+  const nextMap = new Map(canonicalPairs.map(r => [r.id, r.canonical_id]));
+  const visitedGlobal = new Set();
+  const cycles = [];
+
+  for (const [startId] of nextMap) {
+    if (visitedGlobal.has(startId)) continue;
+    const stack = [];
+    const onStack = new Set();
+    let cur = startId;
+    while (cur && nextMap.has(cur)) {
+      if (onStack.has(cur)) {
+        // ループ発見: stack 内で cur から末尾まで
+        const i = stack.indexOf(cur);
+        const loop = stack.slice(i).concat(cur); // 終端に再度 cur を付けて分かりやすく
+        cycles.push(loop.map(label).join(" -> "));
+        break;
+      }
+      stack.push(cur);
+      onStack.add(cur);
+      visitedGlobal.add(cur);
+      cur = nextMap.get(cur);
+    }
+  }
+
+  if (selfRefs.length || multiHops.length || cycles.length) {
+    let msg = "[canonical] 定義エラーを検出しました。CSVを修正してください。\n";
+
+    if (selfRefs.length) {
+      msg += "\n[自己参照]\n";
+      for (const r of selfRefs) {
+        msg += `  - ${r.name}${r.note ? ` [${r.note}]` : ""} が自身を canonical に指定しています\n`;
+      }
+      msg += "    * 対応: 当該行の canonical_* を空にしてください（代表＝canonical なし）。\n";
+    }
+
+    if (multiHops.length) {
+      msg += "\n[多段参照（別名→別名→代表 等）]\n";
+      for (const r of multiHops) {
+        const child  = `${r.child_name}${r.child_note ? ` [${r.child_note}]` : ""}`;
+        const parent = `${r.parent_name}${r.parent_note ? ` [${r.parent_note}]` : ""}`;
+        const gp     = `${r.gp_name}${r.gp_note ? ` [${r.gp_note}]` : ""}`;
+        msg += `  - ${child} → ${parent} → ${gp}\n`;
+      }
+      msg += "    * ルール: 別名は必ず“最終代表（canonical なし）”を **直接** 指してください。\n";
+    }
+
+    if (cycles.length) {
+      msg += "\n[循環参照]\n";
+      for (const chain of cycles) {
+        msg += `  - ${chain}\n`;
+      }
+      msg += "    * 対応: ループ内の1件だけを代表（canonical 空）にし、残りはその代表を直接指してください。\n";
+    }
+
+    throw new Error(msg);
+  }
+  
   // memberships 投入
   for (const r of membershipsCsv) {
     const uName = String(r.unit_name ?? "").trim();
@@ -633,10 +719,9 @@ db.exec(`
   ORDER BY c.key, e.year;
 `);
 
-// （任意）簡易確認ログ
+// 簡易確認ログ
 const check = db.prepare(`SELECT COUNT(*) AS n FROM sqlite_master WHERE name IN ('columns_meta','edition_used_columns')`).get();
 console.log(`post-build objects: ${check.n} (expect 2)`);
-
 
 /* ============================= 差し替え（原子的） ============================= */
 db.close();
