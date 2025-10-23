@@ -1,4 +1,4 @@
-comp,year,comedian_name,comedian_number,rank,catchphrase,first_group,first_order,first_result,first_title,first_movie,second_order,second_result,second_title,second_movie
+comp,year,comedian_name,comedian_note,rank,catchphrase,first_group,first_order,first_result,first_title,first_movie,second_order,second_result,second_title,second_movie
 m1,2024,令和ロマン,,優勝,Champion,,1,850点,,,2番,5票,,
 m1,2024,バッテリィズ,,2位,浪花のド直球,,7,861点,,,3番,3票,,
 m1,2024,真空ジェシカ,,3位,アンコントロールIV,,3,849点,,,1番,1票,,

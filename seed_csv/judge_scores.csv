@@ -1,4 +1,4 @@
-comp,year,round_no,comedian_name,comedian_number,seat_no,score
+comp,year,round_no,comedian_name,comedian_note,seat_no,score
 m1,2024,1,令和ロマン,,1,96
 m1,2024,1,令和ロマン,,2,93
 m1,2024,1,令和ロマン,,3,90

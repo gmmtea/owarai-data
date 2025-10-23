@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * seed_csv/final_results.csv を元に、seed_csv/comedians.csv を同期・補完するツール。
- * - 既存(comedians.csv)に無い (name,number) を追加
+ * - 既存(comedians.csv)に無い (name,note) を追加
  * - reading が未設定/空 かつ name が かな(ひら/カタ)のみ → 自動生成して埋める
  * - NFKC正規化や空白圧縮は行わない（基本は trim のみ）
  * - kind / birth_date / formed_date をサポート（なければ空で出力）
@@ -67,13 +67,18 @@ const writeCsv = (file, rows, header) => {
 // ===== load =====
 fs.mkdirSync(SEED_DIR, { recursive: true });
 
-const coRows = readCsv(CO_CSV); // name, number, reading, kind?, birth_date?, formed_date?
-const frRows = readCsv(FR_CSV); // comp,year,comedian_name,comedian_number,...
+const coRows = readCsv(CO_CSV); // name, note, reading, kind?, birth_date?, formed_date?
+const frRows = readCsv(FR_CSV); // comp,year,comedian_name,comedian_note,...
 
-// 既存 comedians.csv を Map 化（key = `${name}||${number|null}`）
+// 既存 comedians.csv を Map 化（key = `${name}||${note|null}`）
 // ※ 正規化はしない。trim のみでキー化。
-const keyOf = (name, number) =>
-  `${trimOnly(name)}||${number === null ? "null" : Number(number)}`;
+const keyOf = (name, note) =>
+  `${trimOnly(name)}||${note === null ? "null" : note}`;
+
+const normNote = (v) => {
+  const s = trimOnly(v);
+  return s === "" ? null : s;
+};
 
 // 出力配列（既存の順を維持）
 const outRows = [...coRows];
@@ -81,28 +86,28 @@ const outRows = [...coRows];
 // 既存キー -> 配列インデックス＋現行値
 const existing = new Map();
 for (let i = 0; i < coRows.length; i++) {
-  const r = coRows[i] ?? {};
-  const name = trimOnly(r.name);
-  const num  = r.number === "" || r.number == null ? null : Number(r.number);
+  const r           = coRows[i] ?? {};
+  const name        = trimOnly(r.name);
+  const note        = normNote(r.note);
   const reading     = toNullable(r.reading);
   const kind        = toNullable(r.kind);
   const birth_date  = toNullable(r.birth_date);
   const formed_date = toNullable(r.formed_date);
-  existing.set(keyOf(name, num), {
-    index: i, name, number: num, reading, kind, birth_date, formed_date
+  existing.set(keyOf(name, note), {
+    index: i, name, note: note, reading, kind, birth_date, formed_date
   });
 }
 
-// final_results の distinct (name, number) を走査
+// final_results の distinct (name, note) を走査
 const seen = new Set();
 let inserted = 0, readingUpdated = 0;
 
 for (const r of frRows) {
   const name = trimOnly(r.comedian_name);
-  const num  = r.comedian_number === "" || r.comedian_number == null ? null : Number(r.comedian_number);
+  const note = normNote(r.comedian_note ?? r.comedian_number);
   if (!name) continue;
 
-  const k = keyOf(name, num);
+  const k = keyOf(name, note);
   if (seen.has(k)) continue;
   seen.add(k);
 
@@ -119,7 +124,7 @@ for (const r of frRows) {
     const newIndex = outRows.length;
     outRows.push({
       name,
-      number: num == null ? "" : String(num),
+      note: note == null ? "" : note,
       reading: reading ?? "",
       kind: "",          // 追加列は空で出力（入力者が埋めやすいように）
       birth_date: "",
@@ -127,7 +132,7 @@ for (const r of frRows) {
     });
     existing.set(k, {
       index: newIndex,
-      name, number: num, reading, kind: null, birth_date: null, formed_date: null
+      name, note: note, reading, kind: null, birth_date: null, formed_date: null
     });
     inserted++;
   } else {
@@ -152,7 +157,7 @@ for (const r of frRows) {
 }
 
 // ヘッダは固定（既存ファイルに列が無くても追加）
-const header = ["name", "number", "reading", "kind", "birth_date", "formed_date"];
+const header = ["name", "note", "reading", "kind", "birth_date", "formed_date"];
 
 // 既存行に足りない列を追加（空文字で揃える）
 for (let i = 0; i < outRows.length; i++) {
@@ -210,45 +215,45 @@ console.log(`sync-comedians-csv: inserted=${inserted}, reading_filled=${readingU
   }
 
   // 2) チェック対象データ（同期後の outRows を使用）
-  //    number は "" を null 相当に
-  const canonNum = (v) => (v === "" || v == null ? null : Number(v));
+  //    note は "" を null 相当に
+  const canonNote = (v) => (v === "" || v == null ? null : String(v).trim());
   const rows = outRows.map(r => ({
     name: r.name,
-    number: canonNum(r.number),
+    note: canonNote(r.note),
   }));
 
-  // 3) 強い候補: fuzzyKey が同じなのに raw name が複数（number も同じグループ内で比較）
-  const collisions = []; // { number, key, names:Set<string> }
+  // 3) 強い候補: fuzzyKey が同じなのに raw name が複数（note も同じグループ内で比較）
+  const collisions = []; // { note, key, names:Set<string> }
   {
-    // map[number] -> map[fuzzy] -> Set<raw>
-    const byNum = new Map();
+    // map[note] -> map[fuzzy] -> Set<raw>
+    const byNote = new Map();
     for (const r of rows) {
-      const num = r.number === null ? "null" : String(r.number);
+      const note = r.note === null ? "null" : String(r.note);
       const f = fuzzyKey(r.name);
-      if (!byNum.has(num)) byNum.set(num, new Map());
-      const bucket = byNum.get(num);
+      if (!byNote.has(note)) byNote.set(note, new Map());
+      const bucket = byNote.get(note);
       if (!bucket.has(f)) bucket.set(f, new Set());
       bucket.get(f).add(r.name);
     }
-    for (const [num, mp] of byNum) {
+    for (const [note, mp] of byNote) {
       for (const [f, set] of mp) {
         if (set.size >= 2) {
-          collisions.push({ number: num, key: f, names: Array.from(set) });
+          collisions.push({ note: note, key: f, names: Array.from(set) });
         }
       }
     }
   }
 
-  // 4) 弱い候補: 同じ number 内で、NFKC+trim した文字列の編集距離が 1 以下の組
-  const nearPairs = []; // { number, a, b, dist }
+  // 4) 弱い候補: 同じ note 内で、NFKC+trim した文字列の編集距離が 1 以下の組
+  const nearPairs = []; // { note, a, b, dist }
   {
-    const byNum = new Map();
+    const byNote = new Map();
     for (const r of rows) {
-      const num = r.number === null ? "null" : String(r.number);
-      if (!byNum.has(num)) byNum.set(num, []);
-      byNum.get(num).push(r.name);
+      const note = r.note === null ? "null" : String(r.note);
+      if (!byNote.has(note)) byNote.set(note, []);
+      byNote.get(note).push(r.name);
     }
-    for (const [num, names] of byNum) {
+    for (const [note, names] of byNote) {
       // ユニーク化（同名重複は無視）
       const uniq = Array.from(new Set(names));
       for (let i = 0; i < uniq.length; i++) {
@@ -258,7 +263,7 @@ console.log(`sync-comedians-csv: inserted=${inserted}, reading_filled=${readingU
           // まったく同じならスキップ（ここは “近い” 判定なので）
           if (a === b) continue;
           const d = levenshtein(a, b);
-          if (d <= 1) nearPairs.push({ number: num, a: uniq[i], b: uniq[j], dist: d });
+          if (d <= 1) nearPairs.push({ note: note, a: uniq[i], b: uniq[j], dist: d });
         }
       }
     }
@@ -272,18 +277,18 @@ console.log(`sync-comedians-csv: inserted=${inserted}, reading_filled=${readingU
   console.warn("===== spelling-variant candidates (please review comedians.csv) =====");
 
   if (collisions.length) {
-    console.warn("[strong] same fuzzy key within same (name,number) group:");
+    console.warn("[strong] same fuzzy key within same (name,note) group:");
     for (const c of collisions) {
-      const numLabel = c.number === "null" ? "(number: null)" : `(number: ${c.number})`;
-      console.warn(`  - ${numLabel}  key="${c.key}"  ->  ${c.names.join(" / ")}`);
+      const noteLabel = c.note === "null" ? "(note: null)" : `(note: ${c.note})`;
+      console.warn(`  - ${noteLabel}  key="${c.key}"  ->  ${c.names.join(" / ")}`);
     }
   }
 
   if (nearPairs.length) {
-    console.warn("[weak ] small edit distance (<=1) within same number:");
+    console.warn("[weak ] small edit distance (<=1) within same note:");
     for (const p of nearPairs) {
-      const numLabel = p.number === "null" ? "(number: null)" : `(number: ${p.number})`;
-      console.warn(`  - ${numLabel}  "${p.a}"  ~  "${p.b}"  (dist=${p.dist})`);
+      const noteLabel = p.note === "null" ? "(note: null)" : `(note: ${p.note})`;
+      console.warn(`  - ${noteLabel}  "${p.a}"  ~  "${p.b}"  (dist=${p.dist})`);
     }
   }
 })();
