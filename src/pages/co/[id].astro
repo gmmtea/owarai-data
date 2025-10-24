@@ -1,6 +1,7 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { listTargetComedianIds, getComedianTables } from "../../lib/queries";
+import type { CoListItem } from "../../lib/queries";
+import { listTargetComedianIds, getComedianTables, getUnitMembers, getPersonUnits } from "../../lib/queries";
 
 const base = import.meta.env.BASE_URL;
 
@@ -13,6 +14,9 @@ const { id } = Astro.params as { id: string };
 const data = getComedianTables(id);
 if (!data) throw new Error("該当データなし");
 const { comedian, byComp } = data;
+
+const members: CoListItem[] = getUnitMembers(id);
+const units:   CoListItem[] = getPersonUnits(id);
 
 /** 大会ごとに「列メタのユニオン」「全年の行」を事前計算 */
 type ColumnMeta = {
@@ -112,7 +116,37 @@ const sections: Section[] = Object.entries(byComp).map(([comp, block]: any) => {
   </nav>
 
   <h1>{comedian.name} の戦績</h1>
+  <!-- 読み仮名 -->
   {comedian.reading && <p class="reading muted">{comedian.reading}</p>}
+
+  <!-- 所属メンバー・ユニット -->
+  {(members.length > 0 || units.length > 0) && (
+    <p class="aff-line muted">
+      {members.length > 0 && (
+        <>
+          <span class="aff-label">所属メンバー:</span>{" "}
+          {members.map((m, i) => (
+            <>
+              {i > 0 && <span class="aff-sep">/</span>}
+              <a class="aff-link" href={`${base}co/${m.link_id}`}>{m.name}</a>
+            </>
+          ))}
+        </>
+      )}
+      {members.length > 0 && units.length > 0 && <span class="aff-divider">｜</span>}
+      {units.length > 0 && (
+        <>
+          <span class="aff-label">所属ユニット:</span>{" "}
+          {units.map((u, i) => (
+            <>
+              {i > 0 && <span class="aff-sep">/</span>}
+              <a class="aff-link" href={`${base}co/${u.link_id}`}>{u.name}</a>
+            </>
+          ))}
+        </>
+      )}
+    </p>
+  )}
 
   {sections.map((sec) => (
     <section>

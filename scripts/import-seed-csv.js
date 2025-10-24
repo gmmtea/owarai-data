@@ -452,12 +452,21 @@ db.transaction(() => {
     throw new Error(msg);
   }
   
+  // 代表IDを取る小関数
+  const rootIdOf = db.prepare(`
+    SELECT COALESCE(canonical_id, id) AS rid, kind
+    FROM comedians
+    WHERE name=? AND ((note IS NULL AND ? IS NULL) OR note=?)
+    LIMIT 1
+  `);
+
   // memberships 投入
-  for (const r of membershipsCsv) {
+  for (const [i, r] of membershipsCsv.entries()) {
+    const loc = `memberships.csv: line ${i+2}`; // ヘッダ分+1
     const uName = String(r.unit_name ?? "").trim();
-    const uNote  = (r.unit_note === "" || r.unit_note == null) ? null : String(r.unit_note).trim();
+    const uNote = (r.unit_note ?? "").toString().trim() || null;
     const pName = String(r.person_name ?? "").trim();
-    const pNote  = (r.person_note === "" || r.person_note == null) ? null : String(r.person_note).trim();
+    const pNote = (r.person_note ?? "").toString().trim() || null;
 
     if (!uName || !pName) continue;
 
@@ -483,16 +492,23 @@ db.transaction(() => {
       p.kind = "person";
     }
 
+    // 代表IDへ正規化
+    const uRoot = db.prepare(`SELECT COALESCE(canonical_id,id) AS rid, kind FROM comedians WHERE id=?`).get(u.id);
+    const pRoot = db.prepare(`SELECT COALESCE(canonical_id,id) AS rid, kind FROM comedians WHERE id=?`).get(p.id);
+
     // 厳格チェック（要件どおり：不整合ならエラーで止める）
-    if (u.kind === "person") {
-      throw new Error(`memberships: unit "${uName}"(note=${uNote ?? "NULL"}) が person になっています`);
+    if (uRoot.kind === "person") {
+      throw new Error(`${loc}: unit "${uName}"(note=${uNote ?? "NULL"}) は person です`);
     }
-    if (p.kind === "unit") {
-      throw new Error(`memberships: person "${pName}"(note=${pNote ?? "NULL"}) が unit になっています`);
+    if (pRoot.kind === "unit") {
+      throw new Error(`${loc}: person "${pName}"(note=${pNote ?? "NULL"}) は unit です`);
+    }
+    if (uRoot.rid === pRoot.rid) {
+      throw new Error(`${loc}: unit と person が同一ID（${uRoot.rid}）。入力を見直してください`);
     }
 
-    // 登録
-    insMembership.run(u.id, p.id);
+    // 代表IDで登録
+    insMembership.run(uRoot.rid, pRoot.rid);
   }
 
   // final_results 用の note 抽出ヘルパ

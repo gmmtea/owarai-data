@@ -385,24 +385,42 @@ export function listEditionYears(comp: string): number[] {
   return rows.map(r => r.year);
 }
 
+/* 芸人リスト項目型 */
+export type CoListItem = {
+  id: string;
+  link_id: string;
+  name: string;
+  reading: string | null;
+  kind: 'person' | 'unit' | null;
+};
+
+// 代表IDを1回解決
+const selRootId = db().prepare(`
+  SELECT COALESCE(canonical_id, id) AS rid FROM comedians WHERE id=? LIMIT 1
+`);
+
 /* メンバーシップ情報 */
-export function getUnitMembers(unitId: string) {
+export function getUnitMembers(unitId: string): CoListItem[] {
   return db().prepare(`
-    SELECT co.id, co.name, co.reading, co.kind
+    SELECT co.id,
+           COALESCE(co.canonical_id, co.id) AS link_id,
+           co.name, co.reading, co.kind
     FROM memberships m
     JOIN comedians co ON co.id = m.person_id
     WHERE m.unit_id = ?
     ORDER BY COALESCE(co.reading, co.name)
-  `).all(unitId);
+  `).all(unitId) as CoListItem[];
 }
 
 /* 所属ユニット情報 */
-export function getPersonUnits(personId: string) {
+export function getPersonUnits(personId: string): CoListItem[] {
   return db().prepare(`
-    SELECT u.id, u.name, u.reading, u.kind
+    SELECT u.id,
+           COALESCE(u.canonical_id, u.id) AS link_id,
+           u.name, u.reading, u.kind
     FROM memberships m
     JOIN comedians u ON u.id = m.unit_id
     WHERE m.person_id = ?
     ORDER BY COALESCE(u.reading, u.name)
-  `).all(personId);
+  `).all(personId) as CoListItem[];
 }

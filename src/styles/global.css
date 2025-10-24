@@ -559,3 +559,25 @@ table.judge-scores th[data-sortable]{
   .h1-row{ gap:8px }
   .h1-row h1{ min-width:100% }
 }
+
+/* ========== Affiliations: 所属メンバー・ユニット表示 ========== */
+.aff-line{
+  margin: 6px 0 14px;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;               /* 狭い画面で自然に折り返す */
+  gap: 10px;
+  color: var(--muted-fg, #64748b);  /* 行全体をややグレーに */
+}
+.aff-label{
+  font-weight: 600;
+}
+.aff-link{
+  color: var(--muted-fg, #64748b);  /* リンクをグレーに */
+  text-decoration: none;
+}
+.aff-link:hover{
+  text-decoration: underline;
+}
+.aff-sep{ margin: 0 4px; }
+.aff-divider{ margin: 0 6px; opacity: .6; }
