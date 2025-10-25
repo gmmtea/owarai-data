@@ -19,7 +19,7 @@
 					document.querySelectorAll('details.menu[open]').forEach((el) => (el.open = false));
 				}
 			});
-		</script> <main id="main" class="container content">  <nav class="breadcrumbs"> <a href="/owarai-data/">トップ</a><span class="sep">/</span> <a href="/owarai-data/r1">R-1グランプリ（ぐらんぷり）</a><span class="sep">/</span> <span>2004年</span> </nav> <div class="sticky-h1"> <div class="h1-row"> <h1>R-1ぐらんぷり2004 決勝結果</h1> <nav class="year-pager"> <a class="btn" href="/owarai-data/r1/2002" aria-label="2002年へ">← 2002</a> <a class="btn" href="/owarai-data/r1/2005" aria-label="2005年へ">2005 →</a> </nav> </div> </div>  <div class="table-wrap"> <table> <thead> <tr> <th class="sticky-1 col-name">芸人</th> <th class="sticky-2 col-rank">順位</th> <th class="col-catch">キャッチコピー</th><th class="col-order">1本目出順</th> </tr> </thead> <tbody> <tr> <td class="sticky-1 col-name"> <a href="/owarai-data/co/eb1e22aa50b8aafdd3c9">浅越ゴエ</a> </td> <td class="sticky-2 col-rank"> <span class="badge" data-ranksort="1">優勝</span> </td> <td class="col-catch multiline">ニュース漫談でお馴染み
+		</script> <main id="main" class="container content">  <nav class="breadcrumbs"> <a href="/owarai-data/">トップ</a><span class="sep">/</span> <a href="/owarai-data/r1">R-1グランプリ（ぐらんぷり）</a><span class="sep">/</span> <span>2004年</span> </nav> <div class="sticky-h1"> <div class="h1-row"> <h1>R-1ぐらんぷり2004 決勝</h1> <nav class="year-pager"> <a class="btn" href="/owarai-data/r1/2002" aria-label="2002年へ">← 2002</a> <a class="btn" href="/owarai-data/r1/2005" aria-label="2005年へ">2005 →</a> </nav> </div> </div>  <div class="table-wrap"> <table> <thead> <tr> <th class="sticky-1 col-name">芸人</th> <th class="sticky-2 col-rank">順位</th> <th class="col-catch">キャッチコピー</th><th class="col-order">1本目出順</th> </tr> </thead> <tbody>  <tr> <td class="sticky-1 col-name"> <a href="/owarai-data/co/eb1e22aa50b8aafdd3c9">浅越ゴエ</a> </td> <td class="sticky-2 col-rank"> <span class="badge" data-ranksort="1">優勝</span> </td> <td class="col-catch multiline">ニュース漫談でお馴染み
 吉本が生んだIQ芸人</td><td class="col-order">1番</td> </tr><tr> <td class="sticky-1 col-name"> <a href="/owarai-data/co/2e5697b26397716da540">ネゴシックス</a> </td> <td class="sticky-2 col-rank"> <span class="badge" data-ranksort="2">2位</span> </td> <td class="col-catch multiline">出雲弁を駆使した壊れた芸風
 破壊的一人話芸</td><td class="col-order">5番</td> </tr><tr> <td class="sticky-1 col-name"> <a href="/owarai-data/co/51ce3b954016cefca1d4">友近</a> </td> <td class="sticky-2 col-rank"> <span class="badge" data-ranksort="12">決勝進出</span> </td> <td class="col-catch multiline">独特な目線と人間描写
 孤高の女コント師</td><td class="col-order">2番</td> </tr><tr> <td class="sticky-1 col-name"> <a href="/owarai-data/co/69832296ffef333eb4f5">ヤナギブソン</a> </td> <td class="sticky-2 col-rank"> <span class="badge" data-ranksort="12">決勝進出</span> </td> <td class="col-catch multiline">コントユニットザ・プラン9からの第二の使者
@@ -52,4 +52,20 @@
 
   .h1-row{ display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
   .h1-sub{ margin:0; font-size:14px; }
+
+  /* 準決勝進出のインライン表記 */
+  .sf-inline .sf-chunk {
+    white-space: nowrap;
+  }
+
+  .sf-inline {
+    margin: 16px 0 0;
+    line-height: 1.9;
+    word-break: normal;
+    white-space: normal;
+  }
+
+  .sf-note {
+    white-space: nowrap;
+  }
 </style>
