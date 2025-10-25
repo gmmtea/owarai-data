@@ -25,15 +25,25 @@ for (const { comp, year, short_label } of params) {
     <p class="muted">
       お笑い賞レースの年別結果と、芸人ごとの戦績を横断して参照できる非公式データ集です。
     </p>
-    <p class="muted">
-      現状の収録範囲:
-    </p>
-    <ul class="muted">
-      <li>M-1／THE MANZAI／KOC／R-1／ABC（2012〜）／ツギクル 全大会の決勝結果（順位／キャッチコピー／1本目出順／1本目結果／2本目出順／2本目結果）</li>
-      <li>NHK新人お笑い大賞／ラフターナイト の決勝順位</li>
-      <li>KOC 2014〜2025／しずる の決勝ネタ</li>
-      <li>M-1 2015〜2024 1本目／KOC 2015〜2025 1・2本目／R-1 2021〜2025 1本目／ABC 2012〜2015 の審査員別得点</li>
-    </ul>
+    <details class="scope-details">
+      <!-- <p class="muted">
+        現状の収録範囲:
+      </p> -->
+      <summary class="scope-summary">
+        <svg class="chev" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M8.5 5.5L16 12l-7.5 6.5" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>現状の収録範囲</span>
+      </summary>
+      <ul class="muted scope-list">
+        <li>M-1／THE MANZAI／KOC／R-1／ABC（2012〜）／ツギクル 全大会の決勝結果（順位／キャッチコピー／1本目出順／1本目結果／2本目出順／2本目結果）</li>
+        <li>NHK新人お笑い大賞／ラフターナイト の決勝順位</li>
+        <li>KOC 2013〜2025／しずる の決勝ネタ</li>
+        <li>M-1 2015〜2024 1本目／KOC 2015〜2025 1・2本目／R-1 2021〜2025 1本目／ABC 2012〜2015 の審査員別得点</li>
+        <li>M-1 全大会の準決勝進出組</li>
+      </ul>
+    </details>
   </div>
 
   {compOrder

@@ -483,7 +483,7 @@ table.judge-scores th[data-sortable]{
   cursor:pointer;
 }
 
-/* ========== 7) Page Topbar: モバイル優先の補助バー ========== */
+/* ========== 7) Page Topbar & H1 Row: 各ページの上部固定バーとタイトル行 ========== */
 .page-topbar{
   position: sticky;
   top: calc(var(--header-h) + var(--header-gap));
@@ -560,7 +560,7 @@ table.judge-scores th[data-sortable]{
   .h1-row h1{ min-width:100% }
 }
 
-/* ========== Affiliations: 所属メンバー・ユニット表示 ========== */
+/* ========== 8) Affiliations: 所属メンバー・ユニット表示 ========== */
 .aff-line{
   margin: 6px 0 14px;
   display: flex;
@@ -581,3 +581,32 @@ table.judge-scores th[data-sortable]{
 }
 .aff-sep{ margin: 0 4px; }
 .aff-divider{ margin: 0 6px; opacity: .6; }
+
+/* ========== 9) Details/Summary: 折りたたみ表示の基本スタイル ========== */
+.scope-details {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  padding: 8px 10px;
+}
+
+.scope-summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--muted-fg, #64748b);
+}
+.scope-summary::-webkit-details-marker { display: none; }
+
+.scope-summary .chev {
+  width: 1em;
+  height: 1em;
+  transition: transform .18s ease;
+  opacity: .8;
+}
+.scope-details[open] .chev { transform: rotate(90deg); }
+
+.scope-list { margin: 10px 0 2px 1.2em; }
