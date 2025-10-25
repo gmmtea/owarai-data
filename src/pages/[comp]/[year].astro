@@ -43,6 +43,18 @@ const cols = columns; // [{key,label,col_class,is_multiline,related_key}, ...]
 const round1 = getJudgeScoreTable(comp, y, 1);
 const round2 = getJudgeScoreTable(comp, y, 2);
 
+// 決勝表に載せる行（rank_sort <= 40 のみ）
+const finalRows = rows.filter((r: any) => Number(r.rank_sort ?? 99999) <= 40);
+
+// 準決勝進出者一覧（rank_sort === 50、名前順）
+const semifinals = rows.filter((r: any) =>
+  r.rank_sort === 50
+).sort((a: any, b: any) => {
+  const ar = a.reading ?? a.name;
+  const br = b.reading ?? b.name;
+  return String(ar).localeCompare(String(br), "ja");
+});
+
 /** 両ラウンド合算で各席の min/max→mid/half を作り、最大 half を globalHalf に */
 function buildSharedScale(r1: typeof round1, r2: typeof round2){
   const bySeat: Record<number, { mid:number; half:number }> = {};
@@ -108,7 +120,7 @@ const nextYear = i >= 0 && i < years.length-1 ? years[i+1] : null; // 翌年
 
   <div class="sticky-h1">
     <div class="h1-row">
-      <h1>{pageTitle} 決勝結果</h1>
+      <h1>{pageTitle} 決勝</h1>
       {(prevYear != null || nextYear != null) && (
         <nav class="year-pager">
           {prevYear != null && (
@@ -135,7 +147,10 @@ const nextYear = i >= 0 && i < years.length-1 ? years[i+1] : null; // 翌年
         </tr>
       </thead>
       <tbody>
-        {rows.map(r => (
+        {finalRows.length === 0 && (
+          <tr><td colspan={2 + cols.length}><span class="muted">決勝出場のデータはありません。</span></td></tr>
+        )}
+        {finalRows.map(r => (
           <tr>
             <td class="sticky-1 col-name">
               <a href={`${base}co/${r.link_id}`}>{r.name}</a>
@@ -147,7 +162,7 @@ const nextYear = i >= 0 && i < years.length-1 ? years[i+1] : null; // 翌年
               const v = r[c.key];
               const cls  = [c.col_class ?? "", c.is_multiline === 1 ? "multiline" : ""].filter(Boolean).join(" ");
 
-              // ★ first_order を「A-2番」形式で表示（group が無ければ「2番」）
+              // first_order を「A-2番」形式で表示（group が無ければ「2番」）
               if (c.key === "first_order") {
                 const ord = v;
                 const grp = (r as any)["first_group"]; // 行データにあれば利用
@@ -189,6 +204,33 @@ const nextYear = i >= 0 && i < years.length-1 ? years[i+1] : null; // 翌年
   <JudgeScoresTable base={base} title="1本目 審査員別得点" table={round1} scale={sharedScale} />
   <JudgeScoresTable base={base} title="2本目 審査員別得点" table={round2} scale={sharedScale} />
 
+  {/* 準決勝進出者一覧 */}
+  {semifinals.length > 0 && (() => {
+    const norm = (s:string|undefined|null) => (s ?? "").trim();
+    const rows = semifinals.map((r:any) => ({ ...r, cf: norm(r.catchphrase as any) }));
+    const a = rows.filter(r => r.cf === "");
+    const b = rows.filter(r => r.cf !== "" && !r.cf.includes("ワイルドカード"));
+    const c = rows.filter(r => r.cf !== "" && r.cf.includes("ワイルドカード"));
+    const ordered = [...a, ...b, ...c];
+    return (
+      <section>
+        <h2>準決勝進出組</h2>
+          <p class="sf-inline">
+            {ordered.map((r:any, i:number) => (
+              <>
+                <span class="sf-chunk">
+                  <a class="muted-link" href={`${base}co/${r.link_id}`}>{r.name}</a>
+                  {r.cf && <span class="sf-note muted"> {r.cf}</span>}
+                  {i < ordered.length - 1 && " /"}
+                </span>
+                {i < ordered.length - 1 && " "}
+              </>
+            ))}
+          </p>
+      </section>
+    );
+  })()}
+
   <p class="muted"><a href={`${base}${comp}`}>← {edition.competition_name} 年別一覧</a> / <a href={base}>トップ</a></p>
 </Base>
 
@@ -213,4 +255,20 @@ const nextYear = i >= 0 && i < years.length-1 ? years[i+1] : null; // 翌年
 
   .h1-row{ display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
   .h1-sub{ margin:0; font-size:14px; }
+
+  /* 準決勝進出のインライン表記 */
+  .sf-inline .sf-chunk {
+    white-space: nowrap;
+  }
+
+  .sf-inline {
+    margin: 16px 0 0;
+    line-height: 1.9;
+    word-break: normal;
+    white-space: normal;
+  }
+
+  .sf-note {
+    white-space: nowrap;
+  }
 </style>

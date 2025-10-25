@@ -15,6 +15,9 @@ const { comp } = Astro.params as { comp: string };
 const list = getCompetitionYearTables(comp); // { year|null, short_label|null, table|null }[]
 if (!list.length) throw new Error("該当データなし");
 const compName = list.find(x=>x.table)?.table?.edition.competition_name ?? "大会";
+
+const pickFinalRows = (table: any) =>
+  (table?.rows ?? []).filter((r: any) => Number(r.rank_sort) <= 40);
 ---
 <Base title={`${compName} 年別結果`}>
   <nav class="breadcrumbs">
@@ -28,6 +31,7 @@ const compName = list.find(x=>x.table)?.table?.edition.competition_name ?? "大�
     const label = short_label ?? (year != null ? `${year}` : "（回次未設定）");
     // columns: [{ key, label, col_class, is_multiline, related_key, ... }]
     const cols = table ? table.columns : [];
+    const rows = table ? pickFinalRows(table) : [];
     return (
       <section>
         <h2 class="kv">
@@ -45,7 +49,7 @@ const compName = list.find(x=>x.table)?.table?.edition.competition_name ?? "大�
                 </tr>
               </thead>
               <tbody>
-                {table.rows.map((r: any) => (
+                {rows.map((r: any) => (
                   <tr>
                     <td class="sticky-1 col-name">
                       <a href={`${base}co/${r.link_id}`}>{r.name}</a>
