@@ -325,6 +325,7 @@ export function getJudgeScoreTable(comp: string, year: number, round_no: number)
         WHEN 2 THEN CAST(fr.second_order AS INTEGER)
         ELSE NULL
       END AS order_no,
+      CASE ? WHEN 1 THEN fr.first_group ELSE NULL END AS group_name,
       js.seat_no,
       js.score
     FROM final_results fr
@@ -344,22 +345,40 @@ export function getJudgeScoreTable(comp: string, year: number, round_no: number)
       (order_no IS NULL), order_no ASC,              -- 出順（未設定は後ろ）
       CAST(fr.rank_sort AS INTEGER) ASC,             -- 順位
       (co.reading IS NULL), co.reading ASC, co.name ASC  -- 読み→名前
-  `).all(round_no, round_no, ed.eid, round_no) as Array<{
-    comedian_id:string; comedian_name:string; comedian_reading:string|null;
-    rank_sort:number; order_no:number|null; seat_no:number|null; score:number|null;
+  `).all(round_no, round_no, round_no, ed.eid, round_no) as Array<{
+    comedian_id:string;
+    comedian_name:string;
+    comedian_reading:string|null;
+    rank_sort:number;
+    order_no:number|null;
+    group_name:string|null;
+    seat_no:number|null;
+    score:number|null;
   }>;
 
   type Row = {
-    comedian_id:string; comedian_name:string; comedian_reading:string|null;
-    rank_sort:number; order_no:number|null; bySeat: Record<number, number|null>; total:number|null
+    comedian_id:string;
+    comedian_name:string;
+    comedian_reading:string|null;
+    rank_sort:number;
+    order_no:number|null;
+    group_name:string|null;
+    bySeat: Record<number, number|null>;
+    total:number|null
   };
+
   const byId = new Map<string, Row>();
   for (const r of rows) {
     let row = byId.get(r.comedian_id);
     if (!row) {
       row = {
-        comedian_id:r.comedian_id, comedian_name:r.comedian_name, comedian_reading:r.comedian_reading ?? null,
-        rank_sort:r.rank_sort, order_no:r.order_no, bySeat:{}, total:null
+        comedian_id:r.comedian_id,
+        comedian_name:r.comedian_name,
+        comedian_reading:r.comedian_reading ?? null,
+        rank_sort:r.rank_sort,
+        order_no:r.order_no,
+        group_name:r.group_name ?? null,
+        bySeat:{}, total:null
       };
       byId.set(r.comedian_id, row);
     }
@@ -370,7 +389,28 @@ export function getJudgeScoreTable(comp: string, year: number, round_no: number)
     const vals = seats.map(s => row.bySeat[s.seat_no]).filter(v => typeof v === "number") as number[];
     row.total = vals.length ? vals.reduce((a,b)=>a+b,0) : null;
   }
-  return { seats, rows: out };
+
+  // ❶ 投票モード判定（合計の最大が 5 以下）
+  const maxTotal = out.reduce((m, r) => (typeof r.total === "number" && r.total > m ? r.total : m), 0);
+  const mode: "vote" | "score" = (maxTotal <= 5) ? "vote" : "score";
+
+  // ❷ グループ分割（1本目のみ有効）
+  let groups: Array<{ label: string; rows: Row[] }> = [];
+  if (round_no === 1) {
+    const map = new Map<string, Row[]>();
+    for (const r of out) {
+      const key = r.group_name ?? ""; // 空キー=グループなし
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(r);
+    }
+    // 空キー（グループなし）は除外、名前順で安定化
+    groups = Array.from(map.entries())
+      .filter(([k]) => k !== "")
+      .map(([k, rs]) => ({ label: k, rows: rs }));
+    groups.sort((a,b) => a.label.localeCompare(b.label, "ja"));
+  }
+
+  return { seats, rows: out, mode, groups };
 }
 
 /* 年リスト（昇順） */

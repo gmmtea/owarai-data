@@ -3,7 +3,7 @@ type Seat = { seat_no: number; name: string };
 type Row  = {
   comedian_id: string;
   comedian_name: string;
-	comedian_reading: string | null;
+  comedian_reading: string | null;
   rank_sort: number;
   bySeat: Record<number, number|null>;
   total: number|null;
@@ -15,11 +15,12 @@ type Scale = {
   total?: { mid:number; half:number }; // ← 合計列の基準（両ラウンド共通）
 };
 
-const { base, title, table, scale } = Astro.props as {
+const { base, title, table, scale, mode = "score" } = Astro.props as {
   base: string;
   title: string;
   table: { seats: Seat[]; rows: Row[] } | null;
-  scale?: Scale | null;   // ← 追加: 共通スケール（任意）
+  scale?: Scale | null;   // 共通スケール（任意）
+  mode?: "score" | "vote";
 };
 
 const ok = !!table && table.seats.length > 0 && table.rows.length > 0;
@@ -103,25 +104,32 @@ function colorForTotal(score: number|undefined|null): string | null {
   return t >= 0 ? mixTo(RED, p) : mixTo(BLUE, p);
 }
 
+/** 投票数を●で表示 */
+function renderVotes(n: number | null | undefined) {
+  if (n == null || Number.isNaN(Number(n))) return "";
+  const k = Math.max(0, Math.min(10, Math.trunc(Number(n)))); // 安全
+  return "●".repeat(k);
+}
+
 const uid = Math.random().toString(36).slice(2);
 ---
 {ok && (
   <>
     <h2>{title}</h2>
     <div class="table-wrap tight" id={`judge-scores-${uid}`} data-judge-scores>
-      <table class="judge-scores">
+      <table class={`judge-scores ${mode === "vote" ? "is-vote" : "is-score"}`}>
         <thead>
           <tr>
-						<th class="col-name"  data-sortable="text"   data-key="name">芸人</th>
-						<th class="col-order" data-sortable="number" data-key="order_no">出順</th>
-						<th class="col-total" data-sortable="number" data-key="total">合計</th>
-						{table!.seats.map((s) =>
-							<th class="col-score" data-sortable="number" data-key={`seat-${s.seat_no}`}>{s.name}</th>
-						)}
+            <th class="col-name"  data-sortable="text"   data-key="name">芸人</th>
+            <th class="col-order" data-sortable="number" data-key="order_no">出順</th>
+            <th class="col-total" data-sortable="number" data-key="total">合計</th>
+            {table!.seats.map((s) =>
+              <th class="col-score" data-sortable="number" data-key={`seat-${s.seat_no}`}>{s.name}</th>
+            )}
           </tr>
         </thead>
         <tbody>
-          {table!.rows.map((r, i) => (
+          {table!.rows.map((r) => (
             <tr>
               <td class="col-name"
                   data-value-text={(r.comedian_reading ?? r.comedian_name)}>
@@ -130,17 +138,31 @@ const uid = Math.random().toString(36).slice(2);
                 </a>
               </td>
               <td class="col-order" data-value-num={r.order_no ?? ""}>{r.order_no ?? ""}</td>
-              <td class="col-total heat" data-value-num={r.total ?? ""} style={(r.total!=null)? `background:${colorForTotal(r.total)}` : undefined}>
-                {r.total ?? ""}
-              </td>
+
+              {mode === "score" ? (
+                <td class="col-total heat" data-value-num={r.total ?? ""} style={(r.total!=null)? `background:${colorForTotal(r.total)}` : undefined}>
+                  {r.total ?? ""}
+                </td>
+              ) : (
+                <td class="col-total votes" data-value-num={r.total ?? ""}>{renderVotes(r.total)}</td>
+              )}
+
               {table!.seats.map((s) => {
                 const v = r.bySeat[s.seat_no] ?? null;
-                const bg = colorFor(v, s.seat_no);
-                return (
-                  <td class="col-score heat" data-value-num={v ?? ""} style={bg ? `background:${bg}` : undefined}>
-                    {v ?? ""}
-                  </td>
-                );
+                if (mode === "score") {
+                  const bg = colorFor(v, s.seat_no);
+                  return (
+                    <td class="col-score heat" data-value-num={v ?? ""} style={bg ? `background:${bg}` : undefined}>
+                      {v ?? ""}
+                    </td>
+                  );
+                } else {
+                  return (
+                    <td class="col-score votes" data-value-num={v ?? ""}>
+                      {renderVotes(v)}
+                    </td>
+                  );
+                }
               })}
             </tr>
           ))}
@@ -223,3 +245,9 @@ const uid = Math.random().toString(36).slice(2);
 
   </>
 )}
+
+<style is:inline>
+  /* 投票モードのセル（票のドットを少し大きめに） */
+  .judge-scores.is-vote td.votes { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Kaku Gothic ProN", Meiryo, sans-serif; }
+  .judge-scores.is-vote td.votes { letter-spacing: 1px; }
+</style>
