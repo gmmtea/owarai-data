@@ -19,8 +19,8 @@ const data = getEditionTable(comp, y);
 if (!data) throw new Error("該当データなし");
 const { edition, rows, columns } = data;
 
-// タイトルは edition.title があれば優先、無ければ従来の "{competition_name} {year} 決勝結果"
-const pageTitle = edition.title ?? `${edition.competition_name} ${edition.year} 決勝結果`;
+// ページタイトル
+const pageTitle = edition.title ?? `${edition.competition_name} ${edition.year} 結果`;
 
 // "YYYY-MM-DD" → "YYYY年M月D日(曜)" 変換（final_date があれば表示）
 function formatJpDate(s?: string | null) {
@@ -115,7 +115,7 @@ const i = years.indexOf(y);
 const prevYear = i > 0 ? years[i-1] : null;          // 前年（存在すれば）
 const nextYear = i >= 0 && i < years.length-1 ? years[i+1] : null; // 翌年
 ---
-<Base title={`${pageTitle} 決勝結果`}>
+<Base title={`${pageTitle} 結果`}>
   <nav class="breadcrumbs">
     <a href={base}>トップ</a><span class="sep">/</span>
     <a href={`${base}${comp}`}>{edition.competition_name}</a><span class="sep">/</span>
@@ -124,7 +124,7 @@ const nextYear = i >= 0 && i < years.length-1 ? years[i+1] : null; // 翌年
 
   <div class="sticky-h1">
     <div class="h1-row">
-      <h1>{pageTitle} 決勝</h1>
+      <h1>{pageTitle} 結果</h1>
       {(prevYear != null || nextYear != null) && (
         <nav class="year-pager">
           {prevYear != null && (
@@ -137,9 +137,6 @@ const nextYear = i >= 0 && i < years.length-1 ? years[i+1] : null; // 翌年
       )}
     </div>
   </div>
-  <!-- <div>
-    {finalDateText && <p class="muted h1-sub">決勝: {finalDateText}</p>}
-  </div> -->
 
   <div class="table-wrap">
     <table>
