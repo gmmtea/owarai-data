@@ -573,7 +573,6 @@ table.judge-scores th[data-sortable]{
   font-weight: 600;
 }
 .aff-link{
-  color: var(--muted-fg, #64748b);  /* リンクをグレーに */
   text-decoration: none;
 }
 .aff-link:hover{
