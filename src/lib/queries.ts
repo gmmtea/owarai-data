@@ -323,6 +323,7 @@ export function getJudgeScoreTable(comp: string, year: number, round_no: number)
       CASE ?
         WHEN 1 THEN CAST(fr.first_order  AS INTEGER)
         WHEN 2 THEN CAST(fr.second_order AS INTEGER)
+        WHEN 3 THEN CAST(fr.third_order  AS INTEGER)
         ELSE NULL
       END AS order_no,
       CASE ? WHEN 1 THEN fr.first_group ELSE NULL END AS group_name,

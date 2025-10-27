@@ -630,11 +630,15 @@ function autoMetaFor(key){
     first_order:   "1本目出順",
     first_result:  "1本目結果",
     first_title:   "1本目ネタ",
+    first_movie:   "1本目動画",
     second_order:  "2本目出順",
     second_result: "2本目結果",
     second_title:  "2本目ネタ",
-    first_movie:   "1本目動画",
     second_movie:  "2本目動画",
+    third_order:   "3本目出順",
+    third_result:  "3本目結果",
+    third_title:   "3本目ネタ",
+    third_movie:   "3本目動画",
   }[key]) ?? key;
   const colClass =
     /_order$/.test(key)  ? "col-order"  :
@@ -643,12 +647,14 @@ function autoMetaFor(key){
     key === "catchphrase"? "col-catch"  : null;
   const isMovie  = /_movie$/.test(key) ? 1 : 0;
   const related  = (key === "first_title")  ? "first_movie"
-                  : (key === "second_title") ? "second_movie" : null;
+                  : (key === "second_title") ? "second_movie"
+                  : (key === "third_title")  ? "third_movie" : null;
   const pref     = ({
     catchphrase: 10,
     // first_group はUIに出さないので順序は適当でOK
     first_order: 20, first_result: 21, first_title: 22,
     second_order:30, second_result:31, second_title:32,
+    third_order: 40, third_result: 41, third_title: 42,
   }[key]) ?? null;
   const multi    = key === "catchphrase" ? 1 : 0;
   return { label:baseLabel, pref, multi, colClass, isMovie, related };

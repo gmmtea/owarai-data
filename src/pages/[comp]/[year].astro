@@ -42,10 +42,12 @@ const cols = columns; // [{key,label,col_class,is_multiline,related_key}, ...]
 
 const round1 = getJudgeScoreTable(comp, y, 1);
 const round2 = getJudgeScoreTable(comp, y, 2);
+const round3 = getJudgeScoreTable(comp, y, 3);
 
 // 投票/得点モード
 const mode1 = round1?.mode ?? "score";
 const mode2 = round2?.mode ?? "score";
+const mode3 = round3?.mode ?? "score";
 
 // 決勝表に載せる行（rank_sort <= 40 のみ）
 const finalRows = rows.filter((r: any) => Number(r.rank_sort ?? 99999) <= 40);
@@ -60,7 +62,7 @@ const semifinals = rows.filter((r: any) =>
 });
 
 /** 両ラウンド合算で各席の min/max→mid/half を作り、最大 half を globalHalf に */
-function buildSharedScale(r1: typeof round1, r2: typeof round2){
+function buildSharedScale(r1: typeof round1, r2: typeof round2, r3: typeof round3){
   const bySeat: Record<number, { mid:number; half:number }> = {};
   let globalHalf = 0;
 
@@ -68,10 +70,11 @@ function buildSharedScale(r1: typeof round1, r2: typeof round2){
   const seatNos = new Set<number>();
   for (const s of (r1?.seats ?? [])) seatNos.add(s.seat_no);
   for (const s of (r2?.seats ?? [])) seatNos.add(s.seat_no);
+  for (const s of (r3?.seats ?? [])) seatNos.add(s.seat_no);
 
   for (const seat of seatNos) {
     let min = +Infinity, max = -Infinity;
-    for (const tbl of [r1, r2]) {
+    for (const tbl of [r1, r2, r3]) {
       if (!tbl) continue;
       for (const row of tbl.rows) {
         const v = row.bySeat[seat];
@@ -91,7 +94,7 @@ function buildSharedScale(r1: typeof round1, r2: typeof round2){
 
   // 合計列のスケール（両ラウンド合算）
   let tmin = +Infinity, tmax = -Infinity;
-  for (const tbl of [r1, r2]) {
+  for (const tbl of [r1, r2, r3]) {
     if (!tbl) continue;
     for (const row of tbl.rows) {
       const v = row.total;
@@ -107,7 +110,7 @@ function buildSharedScale(r1: typeof round1, r2: typeof round2){
   return { bySeat, globalHalf, total };
 }
 
-const sharedScale = buildSharedScale(round1, round2);
+const sharedScale = buildSharedScale(round1, round2, round3);
 
 // 前年・翌年を特定
 const years = listEditionYears(comp);                // 昇順
@@ -232,6 +235,15 @@ const nextYear = i >= 0 && i < years.length-1 ? years[i+1] : null; // 翌年
     table={round2}
     scale={sharedScale}
     mode={mode2}
+  />
+
+  {/** 3本目：通常通り */}
+  <JudgeScoresTable
+    base={base}
+    title={`3本目 審査員別${mode3 === "vote" ? "投票" : "得点"}`}
+    table={round3}
+    scale={sharedScale}
+    mode={mode3}
   />
 
   {/* 準決勝進出者一覧 */}
