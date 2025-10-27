@@ -701,10 +701,14 @@ const infoCols = db.prepare(`PRAGMA table_info('final_results')`).all()
 for (const eid of editionIds) {
   for (const k of infoCols) {
     if (k === "first_group") continue;  // UIには出さない
+    // 決勝（rank_sort <= 40）の行に限定して「実際に値が入っている列」だけ採用する
     const has = db.prepare(`
       SELECT 1
       FROM final_results
-      WHERE edition_id=? AND "${k}" IS NOT NULL AND CAST("${k}" AS TEXT) <> ''
+      WHERE edition_id=?
+        AND CAST(rank_sort AS INTEGER) <= 40
+        AND "${k}" IS NOT NULL
+        AND CAST("${k}" AS TEXT) <> ''
       LIMIT 1
     `).get(eid);
     if (has) insertUsed.run(eid, k);
