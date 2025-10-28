@@ -108,14 +108,14 @@ const sections: Section[] = Object.entries(byComp).map(([comp, block]: any) => {
 });
 ---
 
-<Base title={`${comedian.name} の戦績`}>
+<Base title={`${comedian.name} の記録`}>
   <nav class="breadcrumbs">
     <a href={base}>トップ</a><span class="sep">/</span>
     <a href={`${base}co`}>芸人一覧</a><span class="sep">/</span>
     <span>{comedian.name}</span>
   </nav>
 
-  <h1>{comedian.name} の戦績</h1>
+  <h1>{comedian.name} の記録</h1>
   <!-- 読み仮名 -->
   {comedian.reading && <p class="reading muted">{comedian.reading}</p>}
 

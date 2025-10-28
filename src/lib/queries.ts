@@ -203,7 +203,7 @@ export function getComedianTables(comedianId: string) {
   const co = db().prepare(`SELECT id, name, reading FROM comedians WHERE id=?`)
                  .get(me.root_id) as any;
 
-  // 全戦績（当時名で出す。名義ラベルとリンク先=代表IDも付与）
+  // 全記録（当時名で出す。名義ラベルとリンク先=代表IDも付与）
   const rows = db().prepare(`
     SELECT
       e.id   AS edition_id,
