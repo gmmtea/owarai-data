@@ -106,9 +106,15 @@ const sections: Section[] = Object.entries(byComp).map(([comp, block]: any) => {
     showAlias,
   } as any;
 });
+
+// タイトル用の表示名を作成
+const titleName =
+  typeof comedian.note === "string" && comedian.note.trim() !== ""
+    ? `${comedian.name}（${comedian.note}）`
+    : comedian.name;
 ---
 
-<Base title={`${comedian.name} の記録`}>
+<Base title={`${titleName} の記録`}>
   <nav class="breadcrumbs">
     <a href={base}>トップ</a><span class="sep">/</span>
     <a href={`${base}co`}>芸人一覧</a><span class="sep">/</span>
@@ -116,8 +122,15 @@ const sections: Section[] = Object.entries(byComp).map(([comp, block]: any) => {
   </nav>
 
   <h1>{comedian.name} の記録</h1>
-  <!-- 読み仮名 -->
-  {comedian.reading && <p class="reading muted">{comedian.reading}</p>}
+
+  <!-- 読み仮名・備考 -->
+  {(comedian.reading || comedian.note) && (
+    <p class="reading-line muted">
+      {comedian.reading && <span class="yomi">{comedian.reading}</span>}
+      {comedian.reading && comedian.note && <span class="sep"> ／ </span>}
+      {comedian.note && <span class="note">{comedian.note}</span>}
+    </p>
+  )}
 
   <!-- 所属メンバー・ユニット -->
   {(members.length > 0 || units.length > 0) && (

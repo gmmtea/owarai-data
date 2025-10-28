@@ -23,10 +23,10 @@ fs.mkdirSync("data", { recursive: true });
 /* ============================= ユーティリティ ============================= */
 const trimOnly = (s) => (s ?? "").toString().trim();
 
-// (name, note) から決定的ID（sha256先頭20hex=80bit）
-const makeId = (name, note) => {
+// (name, number) から決定的ID（sha256先頭20hex=80bit）
+const makeId = (name, number) => {
   const left  = trimOnly(name);
-  const right = (note == null || note === "") ? "" : `_${trimOnly(String(note))}`;
+  const right = (number == null || number === "") ? "" : `_${String(number)}`;
   const base  = `${left}${right}`;
   return crypto.createHash("sha256").update(base, "utf8").digest("hex").slice(0, 20);
 };
@@ -190,19 +190,22 @@ db.transaction(() => {
     CREATE INDEX idx_editions_comp_seq  ON editions(competition_id, seq_no);
     CREATE INDEX idx_editions_comp_date ON editions(competition_id, final_date);
 
-    -- 芸人（(name,note)の複合ユニーク → TEXT主キー）
+    -- 芸人（(name, number) の複合ユニーク → TEXT主キー）
     CREATE TABLE comedians (
       id          TEXT PRIMARY KEY,
       name        TEXT NOT NULL,
-      note        TEXT,
+      number      INTEGER,                                 -- NULL 許容（同名2組目以降に 1,2,...）
+      note        TEXT,                                    -- 自由記述（ユニークには関与しない）
       reading     TEXT,                                    -- ひらがな
       kind        TEXT CHECK (kind IN ('person','unit')),  -- NULL許容
       birth_date  TEXT,                                    -- 個人向け 'YYYY-MM-DD'
       formed_date TEXT,                                    -- ユニット向け 'YYYY-MM-DD'
       canonical_id TEXT REFERENCES comedians(id),
-      UNIQUE (name, note)
+      UNIQUE (name, number)
     );
-    CREATE INDEX idx_co_name_note ON comedians(name, note);
+    -- 「name × number」をユニークにする。ただし number=NULL は名前ごとに高々1件に制限
+    CREATE UNIQUE INDEX idx_co_unique_name_number
+      ON comedians(name, COALESCE(number, -1));
     CREATE INDEX idx_co_canonical ON comedians(canonical_id);
 
     -- 芸人のユニット所属関係
@@ -265,9 +268,9 @@ db.transaction(() => {
     FROM editions e JOIN competitions c ON c.id=e.competition_id
     WHERE c.key=? AND e.year=? LIMIT 1
   `);
-  const selCoByNameNote = db.prepare(`
+  const selCoByNameNumber = db.prepare(`
     SELECT id, kind FROM comedians
-    WHERE name=? AND ((note IS NULL AND ? IS NULL) OR note=?)
+    WHERE name = ? AND ((number IS NULL AND ? IS NULL) OR number = ?)
     LIMIT 1
   `);
 
@@ -280,9 +283,10 @@ db.transaction(() => {
     SELECT c.id, @year, @title, @seq, @date, @label FROM competitions c WHERE c.key=@comp
   `);
   const insCo = db.prepare(`
-    INSERT INTO comedians (id, name, note, reading, kind, birth_date, formed_date)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(name, note) DO UPDATE SET
+    INSERT INTO comedians (id, name, number, note, reading, kind, birth_date, formed_date)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(name, COALESCE(number, -1)) DO UPDATE SET
+      note        = excluded.note,
       reading     = COALESCE(comedians.reading,     excluded.reading),
       kind        = COALESCE(comedians.kind,        excluded.kind),
       birth_date  = COALESCE(comedians.birth_date,  excluded.birth_date),
@@ -333,18 +337,19 @@ db.transaction(() => {
   // comedians（初期マスタ）
   for (const r of comediansCsv) {
     const name = trimOnly(r.name);
-    const note = toNullable(trimOnly(r.note));
-    const id   = makeId(name, note);
+    const number = normalizeIntOrNull(r.number);
+    const note   = toNullable(r.note);
+    const id     = makeId(name, number);
     const readingCsv = toNullable(trimOnly(r.reading));
     const reading = readingCsv ?? (isKanaOnly(name) ? toHiragana(name) : null);
     const kind = normalizeKind(r.kind);
     const birthDate  = toNullable(r.birth_date);
     const formedDate = toNullable(r.formed_date);
-    insCo.run(id, name, note, reading ?? null, kind ?? null, birthDate ?? null, formedDate ?? null);
+    insCo.run(id, name, number, note, reading ?? null, kind ?? null, birthDate ?? null, formedDate ?? null);
   }
 
-  const selCoIdByNameNote = db.prepare(`
-    SELECT id FROM comedians WHERE name=? AND ((note IS NULL AND ? IS NULL) OR note=?)
+  const selCoIdByNameNumber = db.prepare(`
+    SELECT id FROM comedians WHERE name=? AND ((number IS NULL AND ? IS NULL) OR number=?)
   `);
   const updCanonical = db.prepare(`UPDATE comedians SET canonical_id=? WHERE id=?`);
 
@@ -354,11 +359,11 @@ db.transaction(() => {
     const meId = makeId(name, note);
 
     const cName = toNullable(trimOnly(r.canonical_name));
-    const cNote = toNullable(trimOnly(r.canonical_note));
+    const cNum = toNullable(trimOnly(r.canonical_number));
     if (cName) {
-      const root = selCoIdByNameNote.get(cName, cNote, cNote);
+      const root = selCoIdByNameNumber.get(cName, cNum, cNum);
       if (!root) {
-        throw new Error(`[canonical] 代表名が見つかりません: name="${cName}", note=${cNote ?? "NULL"}`);
+        throw new Error(`[canonical] 代表名が見つかりません: name="${cName}", number=${cNum ?? "NULL"}`);
       }
       if (root.id !== meId) {
         updCanonical.run(root.id, meId);
@@ -463,30 +468,32 @@ db.transaction(() => {
   // memberships 投入
   for (const [i, r] of membershipsCsv.entries()) {
     const loc = `memberships.csv: line ${i+2}`; // ヘッダ分+1
-    const uName = String(r.unit_name ?? "").trim();
-    const uNote = (r.unit_note ?? "").toString().trim() || null;
-    const pName = String(r.person_name ?? "").trim();
-    const pNote = (r.person_note ?? "").toString().trim() || null;
+    const uName = trimOnly(r.unit_name);
+    const uNum  = normalizeIntOrNull(r.unit_number);
+    const pName = trimOnly(r.person_name);
+    const pNum  = normalizeIntOrNull(r.person_number);
 
     if (!uName || !pName) continue;
 
     // ユニット側を解決（なければ作成：kind='unit' で）
-    let u = selCoByNameNote.get(uName, uNote, uNote); // => { id, kind } | undefined
+    let u = selCoByNameNumber.get(uName, uNum, uNum);
     if (!u) {
-      const uid = makeId(uName, uNote);
-      insCo.run(uid, uName, uNote, /*reading*/ null, /*kind*/ "unit", /*birth*/ null, /*formed*/ null);
-      u = selCoByNameNote.get(uName, uNote, uNote);
+      const uid = makeId(uName, uNum);
+      insCo.run(uid, uName, uNum, /*note*/ toNullable(r.unit_note) ?? null,
+                /*reading*/ null, /*kind*/ "unit", /*birth*/ null, /*formed*/ null);
+      u = selCoByNameNumber.get(uName, uNum, uNum);
     } else if (u.kind == null) {
       db.prepare(`UPDATE comedians SET kind='unit' WHERE id=? AND kind IS NULL`).run(u.id);
       u.kind = "unit";
     }
 
     // 個人側を解決（なければ作成：kind='person' で）
-    let p = selCoByNameNote.get(pName, pNote, pNote);
+    let p = selCoByNameNumber.get(pName, pNum, pNum);
     if (!p) {
-      const pid = makeId(pName, pNote);
-      insCo.run(pid, pName, pNote, /*reading*/ null, /*kind*/ "person", /*birth*/ null, /*formed*/ null);
-      p = selCoByNameNote.get(pName, pNote, pNote);
+      const pid = makeId(pName, pNum);
+      insCo.run(pid, pName, pNum, /*note*/ toNullable(r.person_note) ?? null,
+                /*reading*/ null, /*kind*/ "person", /*birth*/ null, /*formed*/ null);
+      p = selCoByNameNumber.get(pName, pNum, pNum);
     } else if (p.kind == null) {
       db.prepare(`UPDATE comedians SET kind='person' WHERE id=? AND kind IS NULL`).run(p.id);
       p.kind = "person";
@@ -498,10 +505,10 @@ db.transaction(() => {
 
     // 厳格チェック（要件どおり：不整合ならエラーで止める）
     if (uRoot.kind === "person") {
-      throw new Error(`${loc}: unit "${uName}"(note=${uNote ?? "NULL"}) は person です`);
+      throw new Error(`${loc}: unit "${uName}"(note=${uNum ?? "NULL"}) は person です`);
     }
     if (pRoot.kind === "unit") {
-      throw new Error(`${loc}: person "${pName}"(note=${pNote ?? "NULL"}) は unit です`);
+      throw new Error(`${loc}: person "${pName}"(note=${pNum ?? "NULL"}) は unit です`);
     }
     if (uRoot.rid === pRoot.rid) {
       throw new Error(`${loc}: unit と person が同一ID（${uRoot.rid}）。入力を見直してください`);
@@ -511,10 +518,10 @@ db.transaction(() => {
     insMembership.run(uRoot.rid, pRoot.rid);
   }
 
-  // final_results 用の note 抽出ヘルパ
-  const pickNote = (r) => {
-    const n = r.comedian_note ?? r.comedian_number ?? null;
-    return n == null || String(n).trim()==="" ? null : String(n).trim();
+  // final_results 用の number 抽出ヘルパ
+  const pickNumber = (r) => {
+    const n = (r.comedian_number ?? "").toString().trim();
+    return n === "" ? null : normalizeIntOrNull(n);
   };
 
   // final_results
@@ -523,15 +530,16 @@ db.transaction(() => {
     if (!ed) throw new Error(`edition not found: ${r.comp} ${r.year}`);
 
     const name = trimOnly(r.comedian_name);
-    const noteFromCsv = pickNote(r);
+    const numFromCsv = pickNumber(r);
 
     // 芸人ID解決（なければ自動作成: NULL番が空いていればNULL、埋まっていればmax+1）
-    let coRow = selCoByNameNote.get(name, noteFromCsv, noteFromCsv);
+    let coRow = selCoByNameNumber.get(name, numFromCsv, numFromCsv);
     if (!coRow) {
-      const id = makeId(name, noteFromCsv);
+      const id = makeId(name, numFromCsv);
       const guess = isKanaOnly(name) ? toHiragana(name) : null; // 任意：読み推定を入れる場合
-      insCo.run(id, name, noteFromCsv, /*reading*/ guess ?? null, /*kind*/ null, /*birth*/ null, /*formed*/ null);
-      coRow = selCoByNameNote.get(name, noteFromCsv, noteFromCsv);
+      insCo.run(id, name, numFromCsv, /*note*/ toNullable(r.comedian_note) ?? null,
+                /*reading*/ guess ?? null, /*kind*/ null, /*birth*/ null, /*formed*/ null);
+      coRow = selCoByNameNumber.get(name, numFromCsv, numFromCsv);
     }
     const rankText = String(r.rank);
     const rankSort = computeRankSort(rankText);
@@ -585,13 +593,14 @@ db.transaction(() => {
     if (!Number.isFinite(roundNo) || !Number.isFinite(seatNo)) continue;
 
     const name = trimOnly(r.comedian_name);
-    const noteFromCsv = pickNote(r);
+    const numFromCsv = pickNumber(r);
 
-    let co = selCoByNameNote.get(name, noteFromCsv, noteFromCsv);
+    let co = selCoByNameNumber.get(name, numFromCsv, numFromCsv);
     if (!co) {
-      const id = makeId(name, noteFromCsv);
-      insCo.run(id, name, noteFromCsv, /*reading*/ null, /*kind*/ null, /*birth*/ null, /*formed*/ null);
-      co = selCoByNameNote.get(name, noteFromCsv, noteFromCsv);
+      const id = makeId(name, numFromCsv);
+      insCo.run(id, name, numFromCsv, /*note*/ toNullable(r.comedian_note) ?? null,
+                /*reading*/ null, /*kind*/ null, /*birth*/ null, /*formed*/ null);
+      co = selCoByNameNumber.get(name, numFromCsv, numFromCsv);
     }
 
     const scoreRaw = String(r.score ?? "").trim();

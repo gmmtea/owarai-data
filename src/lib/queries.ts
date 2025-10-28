@@ -188,7 +188,7 @@ export function listComediansCanonicalOnly(): { id: string; name: string; readin
 /* 芸人ページ：大会ごとに年の縦表（追加列の選定は大会年ごとに実データベース準拠） */
 export function getComedianTables(comedianId: string) {
   const me = db().prepare(`
-    SELECT id, name, reading, COALESCE(canonical_id, id) AS root_id
+    SELECT id, name, note, reading, COALESCE(canonical_id, id) AS root_id
     FROM comedians WHERE id=?
   `).get(comedianId) as any;
   if (!me) return null;
@@ -200,8 +200,18 @@ export function getComedianTables(comedianId: string) {
   const idList = ids.map(x => x.id);
 
   // 代表の素データを見出しに使う
-  const co = db().prepare(`SELECT id, name, reading FROM comedians WHERE id=?`)
-                 .get(me.root_id) as any;
+  const co = db().prepare(`
+    SELECT
+      id,
+      name,
+      reading,
+      NULLIF(TRIM(note), '') AS note
+    FROM comedians
+    WHERE id=?
+    LIMIT 1
+  `).get(me.root_id) as { id:string; name:string; reading:string|null; note:string|null } | undefined;
+
+  if (!co) return null;
 
   // 全記録（当時名で出す。名義ラベルとリンク先=代表IDも付与）
   const rows = db().prepare(`
