@@ -403,7 +403,7 @@ export function getJudgeScoreTable(comp: string, year: number, round_no: number)
 
   // ❶ 投票モード判定（合計の最大が 5 以下）
   const maxTotal = out.reduce((m, r) => (typeof r.total === "number" && r.total > m ? r.total : m), 0);
-  const mode: "vote" | "score" = (maxTotal <= 5) ? "vote" : "score";
+  const mode: "vote" | "score" = (maxTotal <= 30) ? "vote" : "score";
 
   // ❷ グループ分割（1本目のみ有効）
   let groups: Array<{ label: string; rows: Row[] }> = [];

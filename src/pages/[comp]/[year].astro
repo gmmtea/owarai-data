@@ -49,6 +49,11 @@ const mode1 = round1?.mode ?? "score";
 const mode2 = round2?.mode ?? "score";
 const mode3 = round3?.mode ?? "score";
 
+// スコア方式のラウンドだけ抽出
+const s1 = (round1 && round1.mode === "score") ? round1 : null;
+const s2 = (round2 && round2.mode === "score") ? round2 : null;
+const s3 = (round3 && round3.mode === "score") ? round3 : null;
+
 // 決勝表に載せる行（rank_sort <= 40 のみ）
 const finalRows = rows.filter((r: any) => Number(r.rank_sort ?? 99999) <= 40);
 
@@ -110,7 +115,7 @@ function buildSharedScale(r1: typeof round1, r2: typeof round2, r3: typeof round
   return { bySeat, globalHalf, total };
 }
 
-const sharedScale = buildSharedScale(round1, round2, round3);
+const sharedScale = buildSharedScale(s1, s2, s3);
 
 // 前年・翌年を特定
 const years = listEditionYears(comp);                // 昇順
@@ -211,39 +216,39 @@ const nextYear = i >= 0 && i < years.length-1 ? years[i+1] : null; // 翌年
       {round1.groups.map((g:any) => (
         <JudgeScoresTable
           base={base}
-          title={`1本目 審査員別${mode1 === "vote" ? "投票" : "得点"}（${g.label}グループ）`}
+          title={`1本目 ${mode1 === "vote" ? "得票" : "得点"}詳細（${g.label}グループ）`}
           table={{ seats: round1.seats, rows: g.rows }}
-          scale={sharedScale}
           mode={mode1}
+          {...(mode1 === "score" ? { scale: sharedScale } : {})}
         />
       ))}
     </>
   ) : (
     <JudgeScoresTable
       base={base}
-      title={`1本目 審査員別${mode1 === "vote" ? "投票" : "得点"}`}
+      title={`1本目 ${mode1 === "vote" ? "得票" : "得点"}詳細`}
       table={round1}
-      scale={sharedScale}
       mode={mode1}
+      {...(mode1 === "score" ? { scale: sharedScale } : {})}
     />
   ))}
 
   {/** 2本目：通常通り */}
   <JudgeScoresTable
     base={base}
-    title={`2本目 審査員別${mode2 === "vote" ? "投票" : "得点"}`}
+    title={`2本目 ${mode2 === "vote" ? "得票" : "得点"}詳細`}
     table={round2}
-    scale={sharedScale}
     mode={mode2}
+    {...(mode2 === "score" ? { scale: sharedScale } : {})}
   />
 
   {/** 3本目：通常通り */}
   <JudgeScoresTable
     base={base}
-    title={`3本目 審査員別${mode3 === "vote" ? "投票" : "得点"}`}
+    title={`3本目 ${mode3 === "vote" ? "得票" : "得点"}詳細`}
     table={round3}
-    scale={sharedScale}
     mode={mode3}
+    {...(mode3 === "score" ? { scale: sharedScale } : {})}
   />
 
   {/* 準決勝進出者一覧 */}

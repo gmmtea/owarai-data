@@ -19,7 +19,7 @@ const { base, title, table, scale, mode = "score" } = Astro.props as {
   base: string;
   title: string;
   table: { seats: Seat[]; rows: Row[] } | null;
-  scale?: Scale | null;   // 共通スケール（任意）
+  scale?: Scale | null;
   mode?: "score" | "vote";
 };
 
@@ -59,7 +59,9 @@ function buildLocalScale() : Scale {
   return { bySeat, globalHalf, total: { mid: tmid, half: thalf } };
 }
 
-const S = scale ?? (ok ? buildLocalScale() : { bySeat:{}, globalHalf:1 });
+const S: Scale = (mode === "score")
+  ? (scale ?? (ok ? buildLocalScale() : { bySeat:{}, globalHalf:1, total:{ mid:0, half:1 } }))
+  : { bySeat:{}, globalHalf:1, total:{ mid:0, half:1 } };
 
 function mixTo(color: [number,number,number], p: number): string {
   const white = [255,255,255];
