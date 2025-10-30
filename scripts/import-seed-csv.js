@@ -79,7 +79,9 @@ function computeRankSort(rankRaw) {
   if (r === "ベスト8") return 12;
   if (r === "ファーストステージ敗退") return 12;
   if (r === "準決勝進出") return 50;
+  if (r === "ベスト16") return 50;
   if (r === "準々決勝進出") return 100;
+  if (r === "ベスト32") return 100;
   if (r === "3回戦進出") return 500;
   if (r === "2回戦進出") return 1000;
   if (r === "1回戦敗退") return 5000;
@@ -173,7 +175,9 @@ db.transaction(() => {
       id          INTEGER PRIMARY KEY,
       key         TEXT UNIQUE NOT NULL,    -- 'm1' | 'koc' | 'r1' 等
       name        TEXT NOT NULL,
-      sort_order  INTEGER
+      sort_order  INTEGER,
+      semifinal_label    TEXT,
+      quarterfinal_label TEXT
     );
 
     -- 大会×年
@@ -276,7 +280,7 @@ db.transaction(() => {
 
   /* ---------- INSERT系の準備 ---------- */
   const insComp = db.prepare(`
-    INSERT INTO competitions(key, name, sort_order) VALUES (?, ?, ?)
+    INSERT INTO competitions(key, name, sort_order, semifinal_label, quarterfinal_label) VALUES (?, ?, ?, ?, ?)
   `);
   const insEd = db.prepare(`
     INSERT INTO editions(competition_id, year, title, seq_no, final_date, short_label)
@@ -321,7 +325,9 @@ db.transaction(() => {
   // competitions
   for (const r of competitions) {
     const so = (r.sort_order ?? "") === "" ? null : Number(r.sort_order);
-    insComp.run(r.key, r.name, so);
+    const semifinalLabel = toNullable(r.semifinal_label);
+    const quarterfinalLabel = toNullable(r.quarterfinal_label);
+    insComp.run(r.key, r.name, so, semifinalLabel, quarterfinalLabel);
   }
 
   // editions

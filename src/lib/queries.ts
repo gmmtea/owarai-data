@@ -67,14 +67,16 @@ export function getEditionTable(comp: string, year: number) {
       e.title,
       e.final_date,
       e.short_label,
-      c.name          AS competition_name
+      c.name          AS competition_name,
+      COALESCE(c.semifinal_label, '準決勝進出組')     AS semifinal_label,
+      COALESCE(c.quarterfinal_label, '準々決勝進出組') AS quarterfinal_label
     FROM editions e
     JOIN competitions c ON c.id = e.competition_id
     WHERE c.key = ? AND e.year = ?
     LIMIT 1
   `).get(comp, year) as {
     edition_id: number; year: number; title: string|null; final_date: string|null;
-    short_label: string|null; competition_name: string;
+    short_label: string|null; competition_name: string; semifinal_label: string; quarterfinal_label: string;
   } | undefined;
 
   if (!ed) return null;
@@ -136,6 +138,8 @@ export function getEditionTable(comp: string, year: number) {
       final_date: ed.final_date,
       short_label: ed.short_label,
       competition_name: ed.competition_name,
+      semifinal_label: ed.semifinal_label,
+      quarterfinal_label: ed.quarterfinal_label,
     },
     columns,  // ← ラベル/クラス/改行フラグ込み
     rows

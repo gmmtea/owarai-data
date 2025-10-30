@@ -26,8 +26,8 @@
 
   /* ステージ色（バッジの段階着色で使用） */
   --stage-sf:#6b21a8;  /* 準決勝 violet-800 */
-  --stage-qf:#1e40af;  /* 準々決勝 indigo-800 */
-  --stage-r3:#166534;  /* 3回戦 deep-green-700 */
+  --stage-qf:#166534;  /* 準々決勝 deep-green-700 */
+  --stage-r3:#1e40af;  /* 3回戦 indigo-800 */
   --stage-r2:#64748b;  /* 2回戦 slate-500 */
   --stage-r1:#475569;  /* 1回戦 slate-600 */
 }
