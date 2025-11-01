@@ -205,6 +205,7 @@ db.transaction(() => {
       birth_date  TEXT,                                    -- 個人向け 'YYYY-MM-DD'
       formed_date TEXT,                                    -- ユニット向け 'YYYY-MM-DD'
       canonical_id TEXT REFERENCES comedians(id),
+      has_profile INTEGER NOT NULL DEFAULT 0,
       UNIQUE (name, number)
     );
     -- 「name × number」をユニークにする。ただし number=NULL は名前ごとに高々1件に制限
@@ -568,6 +569,18 @@ db.transaction(() => {
 
     insFR.run(params);
   }
+
+  // comedians の has_profile 更新（final_results に出ている代表グループ全員を 1）
+  db.exec(`
+    UPDATE comedians AS co
+    SET has_profile = 1
+    WHERE EXISTS (
+      SELECT 1
+      FROM final_results fr
+      JOIN comedians cx ON cx.id = fr.comedian_id
+      WHERE COALESCE(cx.canonical_id, cx.id) = COALESCE(co.canonical_id, co.id)
+    )
+  `);
 
   // judges
   for (const r of judgesCsv) {

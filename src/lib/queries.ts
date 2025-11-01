@@ -185,6 +185,7 @@ export function listComediansCanonicalOnly(): { id: string; name: string; readin
     SELECT id, name, reading
     FROM comedians
     WHERE canonical_id IS NULL
+      AND COALESCE(has_profile, 0) = 1
     ORDER BY COALESCE(reading, name)
   `).all();
 }
@@ -447,6 +448,7 @@ export type CoListItem = {
   name: string;
   reading: string | null;
   kind: 'person' | 'unit' | null;
+  has_profile?: 0 | 1;
 };
 
 // 代表IDを1回解決
@@ -459,7 +461,8 @@ export function getUnitMembers(unitId: string): CoListItem[] {
   return db().prepare(`
     SELECT co.id,
            COALESCE(co.canonical_id, co.id) AS link_id,
-           co.name, co.reading, co.kind
+           co.name, co.reading, co.kind,
+           COALESCE(co.has_profile, 0) AS has_profile
     FROM memberships m
     JOIN comedians co ON co.id = m.person_id
     WHERE m.unit_id = ?
@@ -472,10 +475,20 @@ export function getPersonUnits(personId: string): CoListItem[] {
   return db().prepare(`
     SELECT u.id,
            COALESCE(u.canonical_id, u.id) AS link_id,
-           u.name, u.reading, u.kind
+           u.name, u.reading, u.kind,
+           COALESCE(u.has_profile, 0) AS has_profile
     FROM memberships m
     JOIN comedians u ON u.id = m.unit_id
     WHERE m.person_id = ?
     ORDER BY COALESCE(u.reading, u.name)
   `).all(personId) as CoListItem[];
+}
+
+export function listComedianIdsWithProfile(): string[] {
+  return db().prepare(`
+    SELECT id
+    FROM comedians
+    WHERE has_profile = 1
+    ORDER BY reading IS NULL, reading, name
+  `).all().map((r:any) => r.id);
 }

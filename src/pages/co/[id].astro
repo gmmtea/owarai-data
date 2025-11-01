@@ -1,12 +1,12 @@
 ---
 import Base from "../../layouts/Base.astro";
 import type { CoListItem } from "../../lib/queries";
-import { listTargetComedianIds, getComedianTables, getUnitMembers, getPersonUnits } from "../../lib/queries";
+import { listComedianIdsWithProfile, getComedianTables, getUnitMembers, getPersonUnits } from "../../lib/queries";
 
 const base = import.meta.env.BASE_URL;
 
 export async function getStaticPaths() {
-  const ids = listTargetComedianIds(); // string[]
+  const ids = listComedianIdsWithProfile(); // string[]
   return ids.map((id) => ({ params: { id } }));
 }
 
@@ -141,7 +141,9 @@ const titleName =
           {members.map((m, i) => (
             <>
               {i > 0 && <span class="aff-sep">/</span>}
-              <a class="aff-link" href={`${base}co/${m.link_id}`}>{m.name}</a>
+              {m.has_profile === 1
+                ? <a class="aff-link" href={`${base}co/${m.link_id}`}>{m.name}</a>
+                : <span class="aff-link-disabled">{m.name}</span>}
             </>
           ))}
         </>
@@ -153,7 +155,9 @@ const titleName =
           {units.map((u, i) => (
             <>
               {i > 0 && <span class="aff-sep">/</span>}
-              <a class="aff-link" href={`${base}co/${u.link_id}`}>{u.name}</a>
+              {u.has_profile === 1
+                ? <a class="aff-link" href={`${base}co/${u.link_id}`}>{u.name}</a>
+                : <span class="aff-link-disabled">{u.name}</span>}
             </>
           ))}
         </>
