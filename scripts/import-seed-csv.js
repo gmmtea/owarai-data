@@ -95,7 +95,7 @@ const toNullable = (x) => {
   return s === "" ? null : s;
 };
 
-// グループ名はユーザー定義の任意文字列を許可（NFKC＋trimのみ）
+// ブロック名はユーザー定義の任意文字列を許可（NFKC＋trimのみ）
 function normalizeIntOrNull(raw) {
   if (raw == null) return null;
   const s = String(raw).trim();
@@ -654,7 +654,7 @@ const infoCols2 = db.prepare(`PRAGMA table_info('final_results')`).all()
 function autoMetaFor(key){
   const baseLabel = ({
     catchphrase:   "キャッチコピー",
-    first_group:   "1本目グループ名",
+    first_group:   "1本目ブロック名",
     first_order:   "1本目出順",
     first_result:  "1本目結果",
     first_title:   "1本目ネタ",

@@ -413,16 +413,16 @@ export function getJudgeScoreTable(comp: string, year: number, round_no: number)
   const maxTotal = out.reduce((m, r) => (typeof r.total === "number" && r.total > m ? r.total : m), 0);
   const mode: "vote" | "score" = (maxTotal <= 30) ? "vote" : "score";
 
-  // ❷ グループ分割（1本目のみ有効）
+  // ❷ ブロック分割（1本目のみ有効）
   let groups: Array<{ label: string; rows: Row[] }> = [];
   if (round_no === 1) {
     const map = new Map<string, Row[]>();
     for (const r of out) {
-      const key = r.group_name ?? ""; // 空キー=グループなし
+      const key = r.group_name ?? ""; // 空キー=ブロックなし
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(r);
     }
-    // 空キー（グループなし）は除外、名前順で安定化
+    // 空キー（ブロックなし）は除外、名前順で安定化
     groups = Array.from(map.entries())
       .filter(([k]) => k !== "")
       .map(([k, rs]) => ({ label: k, rows: rs }));
