@@ -210,11 +210,14 @@ export function getComedianTables(comedianId: string) {
       id,
       name,
       reading,
-      NULLIF(TRIM(note), '') AS note
+      NULLIF(TRIM(note), '') AS note,
+      kind
     FROM comedians
     WHERE id=?
     LIMIT 1
-  `).get(me.root_id) as { id:string; name:string; reading:string|null; note:string|null } | undefined;
+  `).get(me.root_id) as {
+    id:string; name:string; reading:string|null; note:string|null; kind:'person'|'unit'|null
+  } | undefined;
 
   if (!co) return null;
 
@@ -456,7 +459,7 @@ const selRootId = db().prepare(`
   SELECT COALESCE(canonical_id, id) AS rid FROM comedians WHERE id=? LIMIT 1
 `);
 
-/* メンバーシップ情報 */
+/* 所属メンバー情報 */
 export function getUnitMembers(unitId: string): CoListItem[] {
   return db().prepare(`
     SELECT co.id,
@@ -484,6 +487,47 @@ export function getPersonUnits(personId: string): CoListItem[] {
   `).all(personId) as CoListItem[];
 }
 
+/* 関連ユニット情報（同じメンバーを持つ別ユニット） */
+export function getRelatedUnitsForUnit(unitId: string): CoListItem[] {
+  return db().prepare(`
+    SELECT DISTINCT
+      c2.id               AS id,
+      c2.id               AS link_id,          -- 代表へリンク
+      c2.name             AS name,
+      c2.reading          AS reading,
+      c2.kind             AS kind,
+      COALESCE(c2.has_profile, 0) AS has_profile
+    FROM memberships m1                          -- 対象ユニットのメンバー
+    JOIN memberships m2 ON m2.person_id = m1.person_id   -- そのメンバーが所属する別ユニット
+    JOIN comedians u   ON u.id  = m2.unit_id
+    JOIN comedians c2  ON c2.id = COALESCE(u.canonical_id, u.id) -- canonical へ正規化
+    WHERE m1.unit_id = ?
+      AND m2.unit_id <> ?
+    ORDER BY COALESCE(c2.reading, c2.name)
+  `).all(unitId, unitId) as CoListItem[];
+}
+
+/* 関連メンバー情報（同じユニットに所属する別メンバー） */
+export function getRelatedMembersForPerson(personId: string): CoListItem[] {
+  return db().prepare(`
+    SELECT DISTINCT
+      c2.id               AS id,
+      c2.id               AS link_id,
+      c2.name             AS name,
+      c2.reading          AS reading,
+      c2.kind             AS kind,
+      COALESCE(c2.has_profile, 0) AS has_profile
+    FROM memberships mu                           -- 対象の人→所属ユニット
+    JOIN memberships mo ON mo.unit_id = mu.unit_id -- 同じユニットのメンバー
+    JOIN comedians p   ON p.id  = mo.person_id
+    JOIN comedians c2  ON c2.id = COALESCE(p.canonical_id, p.id)
+    WHERE mu.person_id = ?
+      AND mo.person_id <> ?
+    ORDER BY COALESCE(c2.reading, c2.name)
+  `).all(personId, personId) as CoListItem[];
+}
+
+/* プロフィールあり芸人ID一覧 */
 export function listComedianIdsWithProfile(): string[] {
   return db().prepare(`
     SELECT id

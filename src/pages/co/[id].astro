@@ -1,7 +1,14 @@
 ---
 import Base from "../../layouts/Base.astro";
 import type { CoListItem } from "../../lib/queries";
-import { listComedianIdsWithProfile, getComedianTables, getUnitMembers, getPersonUnits } from "../../lib/queries";
+import {
+  listComedianIdsWithProfile,
+  getComedianTables,
+  getUnitMembers,
+  getPersonUnits,
+  getRelatedUnitsForUnit,
+  getRelatedMembersForPerson
+} from "../../lib/queries";
 
 const base = import.meta.env.BASE_URL;
 
@@ -17,6 +24,10 @@ const { comedian, byComp } = data;
 
 const members: CoListItem[] = getUnitMembers(id);
 const units:   CoListItem[] = getPersonUnits(id);
+
+// kind に応じて関連を取得
+const relatedUnits:   CoListItem[] = comedian.kind === 'unit'   ? getRelatedUnitsForUnit(id)     : [];
+const relatedMembers: CoListItem[] = comedian.kind === 'person' ? getRelatedMembersForPerson(id) : [];
 
 /** 大会ごとに「列メタのユニオン」「全年の行」を事前計算 */
 type ColumnMeta = {
@@ -162,6 +173,36 @@ const titleName =
           ))}
         </>
       )}
+    </p>
+  )}
+
+  <!-- ★ 追加ブロック: 関連ユニット（ユニットページ時） -->
+  {comedian.kind === 'unit' && relatedUnits.length > 0 && (
+    <p class="aff-line muted">
+      <span class="aff-label">関連ユニット:</span>{" "}
+      {relatedUnits.map((u, i) => (
+        <>
+          {i > 0 && <span class="aff-sep">/</span>}
+          {u.has_profile === 1
+            ? <a class="aff-link" href={`${base}co/${u.link_id}`}>{u.name}</a>
+            : <span class="aff-link-disabled">{u.name}</span>}
+        </>
+      ))}
+    </p>
+  )}
+
+  <!-- ★ 追加ブロック: 関連メンバー（メンバーページ時） -->
+  {comedian.kind === 'person' && relatedMembers.length > 0 && (
+    <p class="aff-line muted">
+      <span class="aff-label">関連メンバー:</span>{" "}
+      {relatedMembers.map((m, i) => (
+        <>
+          {i > 0 && <span class="aff-sep">/</span>}
+          {m.has_profile === 1
+            ? <a class="aff-link" href={`${base}co/${m.link_id}`}>{m.name}</a>
+            : <span class="aff-link-disabled">{m.name}</span>}
+        </>
+      ))}
     </p>
   )}
 
