@@ -2,8 +2,9 @@ key,name,sort_order,semifinal_label,quarterfinal_label
 m1,M-1グランプリ,1,,
 tm,THE MANZAI,2,,
 koc,キングオブコント,3,,
-r1,R-1グランプリ（ぐらんぷり）,4,,
+r1,R-1グランプリ,4,,
 sec,THE SECOND〜漫才トーナメント〜,5,ベスト16,ベスト32
+tw,女芸人No.1決定戦 THE W,6,,
 abc,ABCお笑いグランプリ,7,,
 tsugi,ツギクル芸人グランプリ,8,,
 ln,マイナビ Laughter Night チャンピオンLIVE,9,,

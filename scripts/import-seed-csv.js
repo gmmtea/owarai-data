@@ -116,6 +116,40 @@ function normalizeKind(raw) {
   return null; // 不明はNULLで取り込む（後から補完可）
 }
 
+/* ============================= エラー収集ユーティリティ ============================= */
+const errors = [];
+function pushErr(file, line, code, message, record) {
+  errors.push({ file, line, code, message, record });
+}
+
+function printErrorsAndExit() {
+  if (errors.length === 0) return;
+  // ファイル別件数
+  const byFile = new Map();
+  for (const e of errors) byFile.set(e.file, (byFile.get(e.file) ?? 0) + 1);
+
+  console.error("==== CSV Validation Errors ====");
+  for (const [file, count] of [...byFile.entries()].sort()) {
+    console.error(`- ${file}: ${count}件`);
+  }
+  console.error("---- 詳細 ----");
+  for (const e of errors) {
+    const head = `${e.file}: line ${e.line} [${e.code}]`;
+    console.error(head);
+    console.error(`  ${e.message}`);
+    if (e.record) {
+      // 主要カラムだけ短く抜粋（長い場合は適宜調整）
+      const preview = Object.fromEntries(
+        Object.entries(e.record).filter(([k]) =>
+          /^(comp|year|round_no|seat_no|unit_name|unit_number|person_name|person_number|comedian_name|comedian_number|rank)$/.test(k)
+        )
+      );
+      console.error(`  record: ${JSON.stringify(preview)}`);
+    }
+  }
+  process.exit(1);
+}
+
 /* ============================= CSV 読み込み ============================= */
 // 空でも進む。空なら該当テーブルは0件で終わるだけ。
 const competitions       = readCsv("competitions.csv");     // key,name,sort_order?
@@ -129,7 +163,11 @@ const membershipsCsv     = readCsv("memberships.csv");      // unit_name,unit_no
 
 /* ============================= final_results の動的列定義 ============================= */
 // 既知の基本キー以外の列を追加列として採用（型はヘッダ値から簡易推定）
-const BASE_KEYS = new Set(["comp","year","comedian_name","comedian_note","rank","rank_sort"]);
+const BASE_KEYS = new Set([
+  "comp","year",
+  "comedian_name","comedian_note","comedian_number",
+  "rank","rank_sort",
+]);
 const header = results[0] ? Object.keys(results[0]) : [];
 let extraCols = header.filter(h => !BASE_KEYS.has(h));
 
@@ -158,6 +196,88 @@ const inferType = (name) => {
   if (allNum) return "REAL";
   return "TEXT";
 };
+
+/* ============================= プレフライト索引 ============================= */
+function normIntOrNullLoose(v) {
+  const s = String(v ?? "").trim();
+  return s === "" ? null : (/^-?\d+$/.test(s) ? Number(s) : null);
+}
+function keyCo(name, number) { return `${String(name ?? "").trim()}||${number == null ? "" : String(number)}`; }
+
+// comedians.csv を基準に存在とkindを引くインデックス
+const coIndex = new Map(); // key: name||number → { kind, row }
+for (const r of comediansCsv) {
+  const nm = String(r.name ?? "").trim();
+  const num = normIntOrNullLoose(r.number);
+  if (!nm) continue;
+  const kd = normalizeKind(r.kind); // 既存関数
+  coIndex.set(keyCo(nm, num), { kind: kd ?? null, row: r });
+}
+
+/* ============================= プレフライト検証 ============================= */
+// 1) memberships.csv
+for (let i = 0; i < membershipsCsv.length; i++) {
+  const r = membershipsCsv[i];
+  const line = i + 2;
+  const file = "memberships.csv";
+  const uName = String(r.unit_name ?? "").trim();
+  const uNum  = normIntOrNullLoose(r.unit_number);
+  const pName = String(r.person_name ?? "").trim();
+  const pNum  = normIntOrNullLoose(r.person_number);
+  if (!uName || !pName) continue; // 空行様扱い
+
+  const uk = keyCo(uName, uNum);
+  const pk = keyCo(pName, pNum);
+  const u = coIndex.get(uk);
+  const p = coIndex.get(pk);
+  if (!u) pushErr(file, line, "CO_NOT_FOUND_UNIT",
+    `comedians.csv 未登録ユニット: name="${uName}", number=${uNum ?? "NULL"}`, r);
+  if (!p) pushErr(file, line, "CO_NOT_FOUND_PERSON",
+    `comedians.csv 未登録メンバー: name="${pName}", number=${pNum ?? "NULL"}`, r);
+  if (u && u.kind !== "unit")
+    pushErr(file, line, "KIND_MISMATCH_UNIT",
+      `ユニット側kindが 'unit' ではありません（kind=${u.kind ?? "NULL"}）`, r);
+  if (p && p.kind !== "person")
+    pushErr(file, line, "KIND_MISMATCH_PERSON",
+      `メンバー側kindが 'person' ではありません（kind=${p.kind ?? "NULL"}）`, r);
+  if (u && p && uk === pk)
+    pushErr(file, line, "SAME_ID",
+      "unit と person が同一キー（name,number）です。入力を見直してください。", r);
+}
+
+// 2) final_results.csv
+for (let i = 0; i < results.length; i++) {
+  const r = results[i];
+  const line = i + 2;
+  const file = "final_results.csv";
+  const name = String(r.comedian_name ?? "").trim();
+  const num  = normIntOrNullLoose(r.comedian_number);
+  if (!name) continue;
+  const co = coIndex.get(keyCo(name, num));
+  if (!co) {
+    pushErr(file, line, "CO_NOT_FOUND",
+      `comedians.csv 未登録の芸人: name="${name}", number=${num ?? "NULL"}`, r);
+  }
+}
+
+// 3) judge_scores.csv
+for (let i = 0; i < judgeScoresCsv.length; i++) {
+  const r = judgeScoresCsv[i];
+  const line = i + 2;
+  const file = "judge_scores.csv";
+  const name = String(r.comedian_name ?? "").trim();
+  const num  = normIntOrNullLoose(r.comedian_number);
+  if (!name) continue;
+  const co = coIndex.get(keyCo(name, num));
+  if (!co) {
+    pushErr(file, line, "CO_NOT_FOUND",
+      `comedians.csv 未登録の芸人（個票）: name="${name}", number=${num ?? "NULL"}`, r);
+  }
+}
+
+if (errors.length) {
+  printErrorsAndExit();
+}
 
 /* ============================= 一時DBへ全投入 ============================= */
 if (fs.existsSync(TMP_PATH)) fs.rmSync(TMP_PATH);
@@ -278,6 +398,14 @@ db.transaction(() => {
     WHERE name = ? AND ((number IS NULL AND ? IS NULL) OR number = ?)
     LIMIT 1
   `);
+  function assertComedianExists(name, number, locLabel){
+    const hit = selCoByNameNumber.get(name, number, number);
+    if (!hit) {
+      const numLabel = (number == null ? "NULL" : String(number));
+      throw new Error(`${locLabel}: comedians.csv に未登録の芸人です → name="${name}", number=${numLabel}`);
+    }
+    return hit; // { id, kind }
+  }
 
   /* ---------- INSERT系の準備 ---------- */
   const insComp = db.prepare(`
@@ -361,9 +489,9 @@ db.transaction(() => {
   const updCanonical = db.prepare(`UPDATE comedians SET canonical_id=? WHERE id=?`);
 
   for (const r of comediansCsv) {
-    const name = trimOnly(r.name);
-    const note = toNullable(trimOnly(r.note));
-    const meId = makeId(name, note);
+    const name   = trimOnly(r.name);
+    const number = normalizeIntOrNull(r.number);
+    const meId   = makeId(name, number);
 
     const cName = toNullable(trimOnly(r.canonical_name));
     const cNum = toNullable(trimOnly(r.canonical_number));
@@ -482,40 +610,20 @@ db.transaction(() => {
 
     if (!uName || !pName) continue;
 
-    // ユニット側を解決（なければ作成：kind='unit' で）
-    let u = selCoByNameNumber.get(uName, uNum, uNum);
-    if (!u) {
-      const uid = makeId(uName, uNum);
-      insCo.run(uid, uName, uNum, /*note*/ toNullable(r.unit_note) ?? null,
-                /*reading*/ null, /*kind*/ "unit", /*birth*/ null, /*formed*/ null);
-      u = selCoByNameNumber.get(uName, uNum, uNum);
-    } else if (u.kind == null) {
-      db.prepare(`UPDATE comedians SET kind='unit' WHERE id=? AND kind IS NULL`).run(u.id);
-      u.kind = "unit";
-    }
-
-    // 個人側を解決（なければ作成：kind='person' で）
-    let p = selCoByNameNumber.get(pName, pNum, pNum);
-    if (!p) {
-      const pid = makeId(pName, pNum);
-      insCo.run(pid, pName, pNum, /*note*/ toNullable(r.person_note) ?? null,
-                /*reading*/ null, /*kind*/ "person", /*birth*/ null, /*formed*/ null);
-      p = selCoByNameNumber.get(pName, pNum, pNum);
-    } else if (p.kind == null) {
-      db.prepare(`UPDATE comedians SET kind='person' WHERE id=? AND kind IS NULL`).run(p.id);
-      p.kind = "person";
-    }
+    // ユニット/個人とも comedians.csv 由来のDBに **存在必須**（なければ即エラー）
+    const u = assertComedianExists(uName, uNum, loc); // {id, kind}
+    const p = assertComedianExists(pName, pNum, loc); // {id, kind}
 
     // 代表IDへ正規化
     const uRoot = db.prepare(`SELECT COALESCE(canonical_id,id) AS rid, kind FROM comedians WHERE id=?`).get(u.id);
     const pRoot = db.prepare(`SELECT COALESCE(canonical_id,id) AS rid, kind FROM comedians WHERE id=?`).get(p.id);
 
-    // 厳格チェック（要件どおり：不整合ならエラーで止める）
-    if (uRoot.kind === "person") {
+    // 厳格チェック（kind 不備もエラーにする：自動補完しない）
+    if (uRoot.kind !== "unit") {
       throw new Error(`${loc}: unit "${uName}"(note=${uNum ?? "NULL"}) は person です`);
     }
-    if (pRoot.kind === "unit") {
-      throw new Error(`${loc}: person "${pName}"(note=${pNum ?? "NULL"}) は unit です`);
+    if (pRoot.kind !== "person") {
+      throw new Error(`${loc}: person "${pName}"(number=${pNum ?? "NULL"}) の kind が 'person' ではありません`);
     }
     if (uRoot.rid === pRoot.rid) {
       throw new Error(`${loc}: unit と person が同一ID（${uRoot.rid}）。入力を見直してください`);
@@ -531,23 +639,18 @@ db.transaction(() => {
     return n === "" ? null : normalizeIntOrNull(n);
   };
 
-  // final_results
-  for (const r of results) {
+  // final_results（未登録はエラーで停止）
+  for (const [i, r] of results.entries()) {
+    const loc = `final_results.csv: line ${i+2}`;
     const ed = selEdByCompYear.get(r.comp, Number(r.year));
     if (!ed) throw new Error(`edition not found: ${r.comp} ${r.year}`);
 
     const name = trimOnly(r.comedian_name);
     const numFromCsv = pickNumber(r);
 
-    // 芸人ID解決（なければ自動作成: NULL番が空いていればNULL、埋まっていればmax+1）
-    let coRow = selCoByNameNumber.get(name, numFromCsv, numFromCsv);
-    if (!coRow) {
-      const id = makeId(name, numFromCsv);
-      const guess = isKanaOnly(name) ? toHiragana(name) : null; // 任意：読み推定を入れる場合
-      insCo.run(id, name, numFromCsv, /*note*/ toNullable(r.comedian_note) ?? null,
-                /*reading*/ guess ?? null, /*kind*/ null, /*birth*/ null, /*formed*/ null);
-      coRow = selCoByNameNumber.get(name, numFromCsv, numFromCsv);
-    }
+    // 芸人は comedians.csv に **存在必須**
+    const coRow = assertComedianExists(name, numFromCsv, loc);
+
     const rankText = String(r.rank);
     const rankSort = computeRankSort(rankText);
 
@@ -603,7 +706,7 @@ db.transaction(() => {
   }
 
   // judge_scores
-  for (const r of judgeScoresCsv) {
+  for (const [i, r] of judgeScoresCsv.entries()) {
     const ed = selEdByCompYear.get(r.comp, Number(r.year));
     if (!ed) throw new Error(`edition not found: ${r.comp} ${r.year}`);
 
@@ -614,13 +717,8 @@ db.transaction(() => {
     const name = trimOnly(r.comedian_name);
     const numFromCsv = pickNumber(r);
 
-    let co = selCoByNameNumber.get(name, numFromCsv, numFromCsv);
-    if (!co) {
-      const id = makeId(name, numFromCsv);
-      insCo.run(id, name, numFromCsv, /*note*/ toNullable(r.comedian_note) ?? null,
-                /*reading*/ null, /*kind*/ null, /*birth*/ null, /*formed*/ null);
-      co = selCoByNameNumber.get(name, numFromCsv, numFromCsv);
-    }
+    // 芸人は comedians.csv に **存在必須**
+    const co = assertComedianExists(name, numFromCsv, `judge_scores.csv: line ${i+2}`);
 
     const scoreRaw = String(r.score ?? "").trim();
     if (scoreRaw === "") continue;
@@ -646,7 +744,11 @@ db.exec(`
 `);
 
 // final_results の列一覧（ベース列は除外）
-const baseCols2 = new Set(["id","edition_id","comedian_id","rank","rank_sort"]);
+const baseCols2 = new Set([
+  "id","edition_id","comedian_id",
+  "rank","rank_sort",
+  "comedian_note","comedian_number",
+]);
 const infoCols2 = db.prepare(`PRAGMA table_info('final_results')`).all()
   .map(r => r.name)
   .filter(n => !baseCols2.has(n));
@@ -727,7 +829,11 @@ const editionIds = db.prepare(`SELECT id FROM editions`).all().map(r=>r.id);
 const insertUsed = db.prepare(`INSERT INTO edition_used_columns(edition_id,col_key) VALUES (?,?)`);
 
 // final_results の列一覧（ベース列は除外）
-const baseCols = new Set(["id","edition_id","comedian_id","rank","rank_sort"]);
+const baseCols = new Set([
+  "id","edition_id","comedian_id",
+  "rank","rank_sort",
+  "comedian_note","comedian_number",
+]);
 const infoCols = db.prepare(`PRAGMA table_info('final_results')`).all()
   .map(r => r.name)
   .filter(n => !baseCols.has(n));
