@@ -52,6 +52,8 @@ const readCsv = (name) => {
 // かな判定（ひら/カナ＋長音・中点・空白）
 const reKanaOnly = /^[\p{sc=Hiragana}\p{sc=Katakana}ー・\s]+$/u;
 const isKanaOnly = (s) => reKanaOnly.test(trimOnly(s));
+// 読みの厳格検証（“ひらがな”と“ー”のみ）
+const reHiraLongOnly = /^[\p{sc=Hiragana}ー]+$/u;
 // カタカナ→ひらがな
 const toHiragana = (s) => s.replace(/[\u30A1-\u30F6]/g, ch =>
   String.fromCharCode(ch.charCodeAt(0) - 0x60)
@@ -122,6 +124,24 @@ function pushErr(file, line, code, message, record) {
   errors.push({ file, line, code, message, record });
 }
 
+function previewFor(file, record){
+  if (!record || typeof record !== "object") return record;
+  const pick = (obj, keys) =>
+    Object.fromEntries(keys.filter(k => k in obj).map(k => [k, obj[k]]));
+  switch (file) {
+    case "comedians.csv":
+      return pick(record, ["name","number","kind","reading","note","canonical_name","canonical_number"]);
+    case "memberships.csv":
+      return pick(record, ["unit_name","unit_number","person_name","person_number"]);
+    case "final_results.csv":
+      return pick(record, ["comp","year","comedian_name","comedian_number","rank"]);
+    case "judge_scores.csv":
+      return pick(record, ["comp","year","round_no","seat_no","comedian_name","comedian_number","score"]);
+    default:
+      return record;
+  }
+}
+
 function printErrorsAndExit() {
   if (errors.length === 0) return;
   // ファイル別件数
@@ -138,13 +158,8 @@ function printErrorsAndExit() {
     console.error(head);
     console.error(`  ${e.message}`);
     if (e.record) {
-      // 主要カラムだけ短く抜粋（長い場合は適宜調整）
-      const preview = Object.fromEntries(
-        Object.entries(e.record).filter(([k]) =>
-          /^(comp|year|round_no|seat_no|unit_name|unit_number|person_name|person_number|comedian_name|comedian_number|rank)$/.test(k)
-        )
-      );
-      console.error(`  record: ${JSON.stringify(preview)}`);
+      const preview = previewFor(e.file, e.record);
+      console.error(`  record: ${JSON.stringify(previewFor(e.file, e.record))}`);
     }
   }
   process.exit(1);
@@ -204,18 +219,70 @@ function normIntOrNullLoose(v) {
 }
 function keyCo(name, number) { return `${String(name ?? "").trim()}||${number == null ? "" : String(number)}`; }
 
-// comedians.csv を基準に存在とkindを引くインデックス
-const coIndex = new Map(); // key: name||number → { kind, row }
-for (const r of comediansCsv) {
-  const nm = String(r.name ?? "").trim();
+// comedians.csv を基準に存在とkind/読み等を引くインデックス
+// ここで重複・空項目・読みの不正をチェック
+const coIndex = new Map(); // key: name||number → { kind, row, line, hasCanonical, canonicalKey, selfKey }
+const seenCoKeys = new Set();
+for (let i = 0; i < comediansCsv.length; i++) {
+  const r   = comediansCsv[i];
+  const line = i + 2;
+  const file = "comedians.csv";
+  const nm  = String(r.name ?? "").trim();
   const num = normIntOrNullLoose(r.number);
-  if (!nm) continue;
-  const kd = normalizeKind(r.kind); // 既存関数
-  coIndex.set(keyCo(nm, num), { kind: kd ?? null, row: r });
+  const kd  = normalizeKind(r.kind); // 'person' | 'unit' | null
+  const rd  = String(r.reading ?? "").trim();
+  const cName = String(r.canonical_name ?? "").trim();
+  const cNum  = normIntOrNullLoose(r.canonical_number);
+  if (!nm) {
+    pushErr(file, line, "CO_NAME_EMPTY", "name が空です。", r);
+    continue;
+  }
+  const k = keyCo(nm, num);
+  if (seenCoKeys.has(k)) {
+    pushErr(file, line, "CO_DUPLICATE",
+      `同一 (name,number) が重複しています: name="${nm}", number=${num ?? "NULL"}`, r);
+  } else {
+    seenCoKeys.add(k);
+  }
+  // kind が空
+  if (kd == null) {
+    pushErr(file, line, "CO_KIND_EMPTY", "kind が空です（'person' または 'unit' を指定）。", r);
+  }
+  // 読みが空
+  if (!rd) {
+    pushErr(file, line, "CO_READING_EMPTY", "reading が空です。ひらがなで記入してください。", r);
+  } else if (!reHiraLongOnly.test(rd)) {
+    // 読みの厳格検証：ひらがな＋長音のみ
+    pushErr(file, line, "CO_READING_INVALID",
+      "reading に“ひらがな”と“ー”以外の文字が含まれています。", r);
+  }
+  // orphan 用に必要最低限のプレビューを保持（元行全部でも可）
+  const rowPreview = {
+    name: nm, number: num, kind: kd ?? null, reading: rd || "",
+    note: String(r.note ?? "").trim() || null,
+    canonical_name: cName || null, canonical_number: cNum ?? null,
+  };
+  const selfKey = k;
+  const canonicalKey = cName ? keyCo(cName, cNum) : selfKey;
+  coIndex.set(k, {
+    kind: kd ?? null,
+    row: rowPreview,
+    line,
+    hasCanonical: Boolean(cName),
+    canonicalKey,
+    selfKey,
+  });
 }
 
 /* ============================= プレフライト検証 ============================= */
+// 参照状況の収集（要件：memberships または final_results のいずれにも出ない comedians を検出）
+const usedByMembershipsOrFinal = new Set(); // keyCo(name,number)
+
+// 直接参照された (name,number) キー群
+const usedDirect = new Set();
+
 // 1) memberships.csv
+const msPairSeen = new Set(); // 重複 membership 検出用 (unit_key || '->' || person_key)
 for (let i = 0; i < membershipsCsv.length; i++) {
   const r = membershipsCsv[i];
   const line = i + 2;
@@ -225,6 +292,8 @@ for (let i = 0; i < membershipsCsv.length; i++) {
   const pName = String(r.person_name ?? "").trim();
   const pNum  = normIntOrNullLoose(r.person_number);
   if (!uName || !pName) continue; // 空行様扱い
+  usedDirect.add(keyCo(uName, uNum));
+  usedDirect.add(keyCo(pName, pNum));
 
   const uk = keyCo(uName, uNum);
   const pk = keyCo(pName, pNum);
@@ -243,6 +312,19 @@ for (let i = 0; i < membershipsCsv.length; i++) {
   if (u && p && uk === pk)
     pushErr(file, line, "SAME_ID",
       "unit と person が同一キー（name,number）です。入力を見直してください。", r);
+
+  // 重複membershipの検出
+  const pairKey = `${uk}->${pk}`;
+  if (msPairSeen.has(pairKey)) {
+    pushErr(file, line, "MS_DUP_REL",
+      "同一の unit×person 関係が重複しています。", r);
+  } else {
+    msPairSeen.add(pairKey);
+  }
+
+  // 使用フラグ（memberships 参照）
+  usedByMembershipsOrFinal.add(uk);
+  usedByMembershipsOrFinal.add(pk);
 }
 
 // 2) final_results.csv
@@ -253,11 +335,14 @@ for (let i = 0; i < results.length; i++) {
   const name = String(r.comedian_name ?? "").trim();
   const num  = normIntOrNullLoose(r.comedian_number);
   if (!name) continue;
+  usedDirect.add(keyCo(name, num));
   const co = coIndex.get(keyCo(name, num));
   if (!co) {
     pushErr(file, line, "CO_NOT_FOUND",
       `comedians.csv 未登録の芸人: name="${name}", number=${num ?? "NULL"}`, r);
   }
+  // 使用フラグ（final_results 参照）
+  usedByMembershipsOrFinal.add(keyCo(name, num));
 }
 
 // 3) judge_scores.csv
@@ -268,10 +353,42 @@ for (let i = 0; i < judgeScoresCsv.length; i++) {
   const name = String(r.comedian_name ?? "").trim();
   const num  = normIntOrNullLoose(r.comedian_number);
   if (!name) continue;
+  usedDirect.add(keyCo(name, num));
   const co = coIndex.get(keyCo(name, num));
   if (!co) {
     pushErr(file, line, "CO_NOT_FOUND",
       `comedians.csv 未登録の芸人（個票）: name="${name}", number=${num ?? "NULL"}`, r);
+  }
+}
+
+// 4) コメディアンの“未参照”検出（membershipsにもfinal_resultsにも出てこない）
+// まず「どの canonical グループが使われたか」を計算
+const usedGroupKeys = new Set(); // canonicalKey 単位
+for (const [k, v] of coIndex.entries()) {
+  if (usedDirect.has(k)) {
+    // この“直接参照された行”が属する canonical グループを mark
+    usedGroupKeys.add(v.canonicalKey);
+  }
+}
+
+// 判定ルール：
+// A) グループ未使用（canonicalKey 単位）→ CO_ORPHAN_GROUP
+// B) グループは使用されているが、
+//    その行が canonical 指定あり & 直接未使用 → CO_UNUSED_ALIAS
+for (const [k, v] of coIndex.entries()) {
+  const ln  = Number.isInteger(v.line) ? v.line : "-";
+  const row = v.row || {};
+  const groupUsed = usedGroupKeys.has(v.canonicalKey);
+  const selfUsed  = usedDirect.has(v.selfKey);
+
+  if (!groupUsed) {
+    pushErr("comedians.csv", ln, "CO_ORPHAN_GROUP",
+      "canonical グループとしても memberships/final_results のどこからも参照されていません。", row);
+    continue;
+  }
+  if (v.hasCanonical && !selfUsed) {
+    pushErr("comedians.csv", ln, "CO_UNUSED_ALIAS",
+      "canonical を持つ別名行ですが、この行自体は参照されていません。", row);
   }
 }
 
