@@ -4,7 +4,7 @@ import { listComediansCanonicalOnly } from "../../lib/queries";
 
 const base = import.meta.env.BASE_URL;
 
-// かなユーティリティ（ページ内に最小実装）
+/* ============================= かなユーティリティ ============================= */
 const canon = (s: string) => s.normalize("NFKC").trim().replace(/\s+/g, " ");
 const toHiragana = (s: string) => s.replace(/[\u30A1-\u30F6]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0x60));
 const isKanaOnly = (s: string) => /^[\p{sc=Hiragana}\p{sc=Katakana}ー・･・\s]+$/u.test(canon(s));
@@ -22,7 +22,31 @@ const decideReading = (name: string, reading: string | null) => {
   return ""; // 推測不能
 };
 
-// 行グルーピング
+// 先頭かなの基底化（濁点・半濁点を無声化／小書きを正字へ）
+const toBaseHead = (ch: string): string => {
+  const h = toHiragana(ch);
+  const devoiced = h
+    .replace(/[が]/g, "か").replace(/[ぎ]/g, "き").replace(/[ぐ]/g, "く").replace(/[げ]/g, "け").replace(/[ご]/g, "こ")
+    .replace(/[ざ]/g, "さ").replace(/[じ]/g, "し").replace(/[ず]/g, "す").replace(/[ぜ]/g, "せ").replace(/[ぞ]/g, "そ")
+    .replace(/[だ]/g, "た").replace(/[ぢ]/g, "ち").replace(/[づ]/g, "つ").replace(/[で]/g, "て").replace(/[ど]/g, "と")
+    .replace(/[ば]/g, "は").replace(/[び]/g, "ひ").replace(/[ぶ]/g, "ふ").replace(/[べ]/g, "へ").replace(/[ぼ]/g, "ほ")
+    .replace(/[ぱ]/g, "は").replace(/[ぴ]/g, "ひ").replace(/[ぷ]/g, "ふ").replace(/[ぺ]/g, "へ").replace(/[ぽ]/g, "ほ")
+    .replace(/[ゔ]/g, "う");
+  const normalized = devoiced
+    .replace(/^ゃ/, "や").replace(/^ゅ/, "ゆ").replace(/^ょ/, "よ")
+    .replace(/^ぁ/, "あ").replace(/^ぃ/, "い").replace(/^ぅ/, "う").replace(/^ぇ/, "え").replace(/^ぉ/, "お")
+    .replace(/^ゎ/, "わ").replace(/^っ/, "つ");
+  return normalized[0] ?? "";
+};
+
+// 読みの先頭ひらがな1文字を抽出（記号・長音をスキップ）
+const headKana = (s: string): string => {
+  const t = stripSymbolsForReading(s).replace(/ー+/g, ""); // 長音は先頭判定から除外
+  const m = t.match(/[\p{sc=Hiragana}]/u);
+  return m ? m[0] : "";
+};
+
+/* ============================= 行・サブキー定義 ============================= */
 const groups = [
   { key: "あ", set: "あいうえお" },
   { key: "か", set: "かきくけこがぎぐげご" },
@@ -43,6 +67,21 @@ const groupIndex = (ch: string) => {
   return -1; // その他
 };
 
+// 行ごとのサブキー（見出し用）
+const rowSubs: Record<string, string[]> = {
+  あ: ["あ", "い", "う", "え", "お"],
+  か: ["か", "き", "く", "け", "こ"],
+  さ: ["さ", "し", "す", "せ", "そ"],
+  た: ["た", "ち", "つ", "て", "と"],
+  な: ["な", "に", "ぬ", "ね", "の"],
+  は: ["は", "ひ", "ふ", "へ", "ほ"],
+  ま: ["ま", "み", "む", "め", "も"],
+  や: ["や", "ゆ", "よ"],
+  ら: ["ら", "り", "る", "れ", "ろ"],
+  わ: ["わ", "ゐ", "ゑ", "を", "ん"],
+};
+
+/* ============================= データ取得と整形 ============================= */
 const raw = listComediansCanonicalOnly();
 
 // 1) 読みを付与
@@ -51,35 +90,65 @@ const enriched = raw.map(r => {
   return { ...r, reading };
 });
 
-// 2) 読み→ソートキー（ひらがな前提）
-const sortKey = (s: string, fallback: string) => (s && s.length ? s : fallback);
-
-// 3) 行ごとにグルーピング
+// 2) 行→サブキーの2段バケット
 type Item = { id: string; name: string; reading: string };
-const buckets: Record<string, Item[]> = {};
-for (const g of groups) buckets[g.key] = [];
-buckets["その他"] = [];
+type RowBuckets = Record<string, Record<string, Item[]>>;
+const rowBuckets: RowBuckets = {};
 
+// 行の初期化
+for (const g of groups) {
+  rowBuckets[g.key] = {};
+  for (const sub of rowSubs[g.key]) rowBuckets[g.key][sub] = [];
+}
+const others: Item[] = [];
+
+// 分配
 for (const r of enriched) {
   const rd = r.reading;
-  const head = rd ? rd[0] : "";
-  const idx = head ? groupIndex(head) : -1;
-  const key = idx >= 0 ? groups[idx].key : "その他";
-  buckets[key].push({ id: r.id, name: r.name, reading: rd });
+  const head = rd ? headKana(rd) : "";
+  const baseHead = head ? toBaseHead(head) : "";
+
+  const gi = baseHead ? groupIndex(baseHead) : -1;
+  if (gi < 0) {
+    others.push({ id: r.id, name: r.name, reading: rd });
+    continue;
+  }
+  const rowKey = groups[gi].key;
+  const subList = rowSubs[rowKey];
+
+  // サブキー決定：baseHead が行の母音列にあればそれ、特例として「ん」はわ行の「ん」
+  const subKey =
+    subList.includes(baseHead)
+      ? baseHead
+      : baseHead === "ん" && rowKey === "わ"
+      ? "ん"
+      : subList[0]; // 万一取りこぼしがあれば行の先頭へ
+
+  rowBuckets[rowKey][subKey].push({ id: r.id, name: r.name, reading: rd });
 }
 
-// 4) 各バケット内を読み→名前でソート
+// 3) ソート（各サブバケット内を reading→name）
 const collator = new Intl.Collator("ja", { sensitivity: "base", usage: "sort" });
-for (const k of Object.keys(buckets)) {
-  buckets[k].sort((a, b) => {
-    const ak = sortKey(a.reading, a.name);
-    const bk = sortKey(b.reading, b.name);
-    const c = collator.compare(ak, bk);
-    if (c !== 0) return c;
-    return collator.compare(a.name, b.name);
-  });
+const sortKey = (s: string, fallback: string) => (s && s.length ? s : fallback);
+
+for (const rowKey of Object.keys(rowBuckets)) {
+  for (const subKey of Object.keys(rowBuckets[rowKey])) {
+    rowBuckets[rowKey][subKey].sort((a, b) => {
+      const ak = sortKey(a.reading, a.name);
+      const bk = sortKey(b.reading, b.name);
+      const c = collator.compare(ak, bk);
+      return c !== 0 ? c : collator.compare(a.name, b.name);
+    });
+  }
 }
+others.sort((a, b) => {
+  const ak = sortKey(a.reading, a.name);
+  const bk = sortKey(b.reading, b.name);
+  const c = collator.compare(ak, bk);
+  return c !== 0 ? c : collator.compare(a.name, b.name);
+});
 ---
+
 <Base title="芸人一覧">
   <nav class="breadcrumbs">
     <a href={base}>トップ</a><span class="sep">/</span>
@@ -88,28 +157,38 @@ for (const k of Object.keys(buckets)) {
 
   <h1>芸人一覧</h1>
 
-  {groups.map(g => (
-    <section>
-      <h2>{g.key}行</h2>
-      {buckets[g.key].length
-        ? <p class="name-line">
-            {buckets[g.key].map((it, i) => (
-              <>
-                {i > 0 && " / "}
-                <a href={`${base}co/${it.id}`}>{it.name}</a>
-              </>
-            ))}
-          </p>
-        : <p class="muted">該当なし</p>}
-    </section>
-  ))}
+  {/* 表示：サブキー1文字を太字＋コロンで先頭に置く */}
+  {groups.map((g) => {
+    const row = rowBuckets[g.key];
+    const nonEmptySubs = Object.entries(row).filter(([, arr]) => arr.length > 0);
+    return (
+      <section>
+        <h2 id={`row-${g.key}`}>{g.key}行</h2>
+        {nonEmptySubs.length ? (
+          nonEmptySubs.map(([sub, arr]) => (
+            <p class="name-line">
+              <strong>{sub}</strong>:{" "}
+              {arr.map((it, i) => (
+                <>
+                  {i > 0 && " / "}
+                  <a href={`${base}co/${it.id}`}>{it.name}</a>
+                </>
+              ))}
+            </p>
+          ))
+        ) : (
+          <p class="muted">該当なし</p>
+        )}
+      </section>
+    );
+  })}
 
   {/* その他芸人（ラテン文字・漢字のみ等） */}
-  {buckets["その他"].length > 0 && (
+  {others.length > 0 && (
     <section>
       <h2>その他</h2>
       <p class="name-line">
-        {buckets["その他"].map((it, i) => (
+        {others.map((it, i) => (
           <>
             {i > 0 && " / "}
             <a href={`${base}co/${it.id}`}>{it.name}</a>
@@ -123,4 +202,8 @@ for (const k of Object.keys(buckets)) {
 <style>
   .name-line { line-height: 1.9; }
   .name-line a { white-space: nowrap; }
+  .subindex { margin: .25rem 0 1rem; font-size: .95rem; }
+  .subindex a { text-decoration: none; border-bottom: 1px dotted currentColor; }
+  .subindex .muted { opacity: .4; }
+  .subgroup h3 { margin: .75rem 0 .25rem; font-size: 1.05rem; }
 </style>
