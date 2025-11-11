@@ -249,13 +249,13 @@ for (let i = 0; i < comediansCsv.length; i++) {
     pushErr(file, line, "CO_KIND_EMPTY", "kind が空です（'person' または 'unit' を指定）。", r);
   }
   // 読みが空
-  // if (!rd) {
-  //   pushErr(file, line, "CO_READING_EMPTY", "reading が空です。ひらがなで記入してください。", r);
-  // } else if (!reHiraLongOnly.test(rd)) {
-  //   // 読みの厳格検証：ひらがな＋長音のみ
-  //   pushErr(file, line, "CO_READING_INVALID",
-  //     "reading に“ひらがな”と“ー”以外の文字が含まれています。", r);
-  // }
+  if (!rd) {
+    pushErr(file, line, "CO_READING_EMPTY", "reading が空です。ひらがなで記入してください。", r);
+  } else if (!reHiraLongOnly.test(rd)) {
+    // 読みの厳格検証：ひらがな＋長音のみ
+    pushErr(file, line, "CO_READING_INVALID",
+      "reading に“ひらがな”と“ー”以外の文字が含まれています。", r);
+  }
   // orphan 用に必要最低限のプレビューを保持（元行全部でも可）
   const rowPreview = {
     name: nm, number: num, kind: kd ?? null, reading: rd || "",
