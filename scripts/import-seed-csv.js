@@ -439,8 +439,8 @@ db.transaction(() => {
       note        TEXT,                                    -- 自由記述（ユニークには関与しない）
       reading     TEXT,                                    -- ひらがな
       kind        TEXT CHECK (kind IN ('person','unit')),  -- NULL許容
-      birth_date  TEXT,                                    -- 個人向け 'YYYY-MM-DD'
-      formed_date TEXT,                                    -- ユニット向け 'YYYY-MM-DD'
+      birth_date  TEXT,                                    -- 個人 or ユニット（結成年） 'YYYY-MM-DD'
+      m1_url      TEXT,                                    -- 公式: https://www.m-1gp.com/combi/xxxxx.html
       canonical_id TEXT REFERENCES comedians(id),
       has_profile INTEGER NOT NULL DEFAULT 0,
       UNIQUE (name, number)
@@ -533,14 +533,14 @@ db.transaction(() => {
     SELECT c.id, @year, @title, @seq, @date, @label FROM competitions c WHERE c.key=@comp
   `);
   const insCo = db.prepare(`
-    INSERT INTO comedians (id, name, number, note, reading, kind, birth_date, formed_date)
+    INSERT INTO comedians (id, name, number, note, reading, kind, birth_date, m1_url)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(name, COALESCE(number, -1)) DO UPDATE SET
       note        = excluded.note,
       reading     = COALESCE(comedians.reading,     excluded.reading),
       kind        = COALESCE(comedians.kind,        excluded.kind),
       birth_date  = COALESCE(comedians.birth_date,  excluded.birth_date),
-      formed_date = COALESCE(comedians.formed_date, excluded.formed_date)
+      m1_url = COALESCE(comedians.m1_url, excluded.m1_url)
   `);
   const insMembership = db.prepare(`
     INSERT INTO memberships(unit_id, person_id)
@@ -596,8 +596,8 @@ db.transaction(() => {
     const reading = readingCsv ?? (isKanaOnly(name) ? toHiragana(name) : null);
     const kind = normalizeKind(r.kind);
     const birthDate  = toNullable(r.birth_date);
-    const formedDate = toNullable(r.formed_date);
-    insCo.run(id, name, number, note, reading ?? null, kind ?? null, birthDate ?? null, formedDate ?? null);
+    const m1Url = toNullable(r.m1_url);
+    insCo.run(id, name, number, note, reading ?? null, kind ?? null, birthDate ?? null, m1Url ?? null);
   }
 
   const selCoIdByNameNumber = db.prepare(`

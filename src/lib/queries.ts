@@ -211,12 +211,13 @@ export function getComedianTables(comedianId: string) {
       name,
       reading,
       NULLIF(TRIM(note), '') AS note,
-      kind
+      kind,
+      m1_url
     FROM comedians
     WHERE id=?
     LIMIT 1
   `).get(me.root_id) as {
-    id:string; name:string; reading:string|null; note:string|null; kind:'person'|'unit'|null
+    id:string; name:string; reading:string|null; note:string|null; kind:'person'|'unit'|null; m1_url:string|null
   } | undefined;
 
   if (!co) return null;
