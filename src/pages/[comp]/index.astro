@@ -1,6 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { listEditionParams, getCompetitionYearTables } from "../../lib/queries";
+import { listEditionParams, getCompetitionYearTables, listEditionYears } from "../../lib/queries";
 
 const base = import.meta.env.BASE_URL;
 
@@ -18,6 +18,8 @@ const compName = list.find(x=>x.table)?.table?.edition.competition_name ?? "大�
 
 const pickFinalRows = (table: any) =>
   (table?.rows ?? []).filter((r: any) => Number(r.rank_sort) <= 40);
+const yearsAsc = listEditionYears(comp);      // 昇順
+const years = [...yearsAsc].sort((a,b)=>b-a); // 降順に並べ替え
 ---
 <Base title={`${compName} 年別結果`}>
   <nav class="breadcrumbs">
@@ -27,13 +29,24 @@ const pickFinalRows = (table: any) =>
 
   <h1>{compName} 年別結果</h1>
 
+  {years.length > 0 && (
+    <nav class="year-toc" aria-label="年目次">
+      {years.map((y, i) => (
+        <>
+          {i > 0 && <span class="sep"> / </span>}
+          <a href={`#y-${y}`}>{y}</a>
+        </>
+      ))}
+    </nav>
+  )}
+
   {list.map(({ year, short_label, table }) => {
     const label = short_label ?? (year != null ? `${year}` : "（回次未設定）");
     const cols = table ? table.columns : [];
     const rows = table ? pickFinalRows(table) : [];
     return (
       <section>
-        <h2 class="kv">
+        <h2 class="kv" id={year != null ? `y-${year}` : undefined}>
           {label} {table ? <a class="muted" href={`${base}${comp}/${table.edition.year}`}>（単独ページ）</a> : null}
         </h2>
 
@@ -106,4 +119,11 @@ const pickFinalRows = (table: any) =>
       </section>
     );
   })}
+
+  <style>
+    :root { --sticky-header: 75px; }
+
+    /* アンカー付き見出しがスクロール停止するときの余白 */
+    h2[id] { scroll-margin-top: calc(var(--sticky-header) + 8px); }
+  </style>
 </Base>
