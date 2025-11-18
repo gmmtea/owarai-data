@@ -8,27 +8,41 @@ const params = listEditionParams();  // {comp, year|null, short_label|null}[]
 
 // 大会ラベルと並び順は listCompetitions() から組み立てる
 const comps = listCompetitions(); // [{key,name,sort_order}]
-const labels = Object.fromEntries(comps.map(c => [c.key, c.name])); // key→name
-const compOrder = comps.map(c => c.key); // 並び順（sort_order→key）
+const labelByKey = Object.fromEntries(comps.map(c => [c.key, c.name]));
+const orderByKey = Object.fromEntries(comps.map(c => [c.key, c.sort_order])); // number|null
 
-// Mapで収集
 // comp → [ {year, short_label}... ] にまとめる
 const groups = new Map<string, {year:number|null; short_label:string|null}[]>();
 for (const { comp, year, short_label } of params) {
   if (!groups.has(comp)) groups.set(comp, []);
   groups.get(comp)!.push({ year: (year ?? null), short_label: (short_label ?? null) });
 }
+
+// 表示カードの配列（優先度付き）
+const cards = Array.from(groups.entries()).map(([comp, list]) => {
+  // 年降順（NULLは最後）
+  list.sort((a,b) =>
+    a.year == null ? (b.year == null ? 0 : 1)
+    : (b.year == null ? -1 : b.year - a.year)
+  );
+  const sortOrder = orderByKey[comp];
+  // sort_order が小さいほど優先、NULLは末尾扱いのため大きな値を与える
+  const priority = (sortOrder == null) ? 1e9 : sortOrder;
+  return { comp, name: labelByKey[comp], years: list, priority };
+});
+
+// 優先度昇順で並べる（小さい=高優先→先に積む）
+cards.sort((a,b) => a.priority - b.priority);
 ---
+
 <Base title="お笑い主要データまとめ">
   <h1>お笑い主要データまとめ</h1>
-  <div class="card">
+
+  <div class="card intro">
     <p class="muted">
       お笑い芸人やお笑い賞レースの記録を横断して参照できる非公式データ集です。
     </p>
     <details class="scope-details">
-      <!-- <p class="muted">
-        現状の収録範囲:
-      </p> -->
       <summary class="scope-summary">
         <svg class="chev" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <path d="M8.5 5.5L16 12l-7.5 6.5" fill="none" stroke="currentColor" stroke-width="2"
@@ -48,33 +62,183 @@ for (const { comp, year, short_label } of params) {
     </details>
   </div>
 
-  {compOrder
-    .filter((c) => groups.has(c))
-    .map((c) => {
-      const list = groups.get(c)!;
-      // 年降順（NULLは最後）
-      list.sort((a,b) =>
-        a.year == null ? (b.year == null ? 0 : 1)
-        : (b.year == null ? -1 : b.year - a.year)
-      );
-      return (
-        <section>
-          <h2>{labels[c]}</h2>
-          <ul>
-            {list.map(({year, short_label}) => {
-              const label = short_label ?? (year != null ? `${year}` : "（回次未設定）");
-              // year があるものだけリンク、無ければテキスト
-              return (
-                <li>
-                  {year != null
-                    ? <a href={`${base}${c}/${year}`}>{label} 結果</a>
-                    : <span class="muted">{label} 結果</span>}
-                </li>
-              );
-            })}
-          </ul>
-          <p><a href={`${base}${c}`}>→ {labels[c]} 年別結果一覧</a></p>
-        </section>
-      );
-    })}
+  <!-- Masonry の列を作る親 -->
+  <div id="masonry" aria-live="polite"></div>
+
+  <!-- ここに“素材”としてカード群を置き、JSで列に再配置する -->
+  <div id="cards-src" hidden>
+    {cards.map(card => (
+      <section class="comp-card" data-comp={card.comp} data-priority={String(card.priority)}>
+        <header class="comp-head">
+          <h2 class="comp-title">{card.name}</h2>
+          <a class="more-link" href={`${base}${card.comp}`}>年別結果一覧</a>
+        </header>
+
+        <ul class="year-list">
+          {card.years.map(({year, short_label}) => {
+            const label = short_label ?? (year != null ? `${year}` : "（回次未設定）");
+            return (
+              <li>
+                {year != null
+                  ? <a href={`${base}${card.comp}/${year}`}>{label} 結果</a>
+                  : <span class="muted">{label} 結果</span>}
+              </li>
+            );
+          })}
+        </ul>
+
+        <button class="toggle" type="button" aria-expanded="false">もっと見る</button>
+      </section>
+    ))}
+  </div>
+
+  <script is:inline>
+    // 折りたたみ（各カード内）
+    function setupCollapse(card) {
+      const list = card.querySelector('.year-list');
+      const btn  = card.querySelector('.toggle');
+      if (!list || !btn) return;
+
+      const MAX = 8; // 既定
+      const items = list.querySelectorAll('li');
+      if (items.length <= MAX) {
+        btn.style.display = 'none';
+        return;
+      }
+      list.classList.add('collapsed');
+      btn.addEventListener('click', () => {
+        const collapsed = list.classList.toggle('collapsed');
+        btn.setAttribute('aria-expanded', String(!collapsed));
+        btn.textContent = collapsed ? 'もっと見る' : '閉じる';
+      });
+    }
+
+    // メイソンリー：優先度順で「最短列」に積む
+    (function(){
+      const root = document.getElementById('masonry');
+      const src  = document.getElementById('cards-src');
+      if (!root || !src) return;
+
+      // 事前に素材カードをNodeとして確保（優先度順＝DOM順）
+      const cards = Array.from(src.children);
+
+      function colCountForWidth(w){
+        // シンプルな列数ルール（必要なら調整）
+        if (w >= 680) return 3;
+        if (w >= 480)  return 2;
+        return 1;
+      }
+
+      function layout(){
+        // いったんクリア
+        root.innerHTML = '';
+
+        const n = colCountForWidth(root.clientWidth || window.innerWidth);
+        const cols = [];
+        for (let i=0;i<n;i++){
+          const c = document.createElement('div');
+          c.className = 'm-col';
+          root.appendChild(c);
+          cols.push(c);
+        }
+
+        // 優先度順に“最短列”へ追加
+        for (const card of cards) {
+          // 初回のみ内部の折りたたみセットアップ
+          if (!card.__collapseReady) {
+            setupCollapse(card);
+            card.__collapseReady = true;
+          }
+          let target = cols[0];
+          for (const c of cols) {
+            if (c.offsetHeight < target.offsetHeight) target = c;
+          }
+          target.appendChild(card);
+        }
+      }
+
+      // 初期配置
+      layout();
+
+      // リサイズで再配置（デバウンス）
+      let tid = null;
+      window.addEventListener('resize', () => {
+        clearTimeout(tid);
+        tid = setTimeout(layout, 120);
+      });
+    })();
+  </script>
+
+  <style>
+    /* イントロ */
+    .intro { margin-bottom: 16px; }
+
+    /* 親と列 */
+    #masonry {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: 1fr; /* JSで列divを作るので1カラムでOK */
+      align-items: start;
+    }
+    #masonry .m-col {
+      display: grid;
+      gap: 16px;
+    }
+
+    /* 列を横並びに */
+    #masonry { grid-auto-flow: column; }
+    #masonry { grid-auto-columns: 1fr; }
+    #masonry .m-col { min-width: 0; }
+
+    .comp-card {
+      border: 1px solid var(--border, #ddd);
+      border-radius: 12px;
+      padding: 12px 12px 8px;
+      margin: 0 0 8px;
+      background: var(--card-bg, #fff);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+    }
+    .comp-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .comp-title { font-size: 1.05rem; margin: 0; line-height: 1.2; }
+    .more-link { font-size: 0.9rem; white-space: nowrap; }
+
+    .year-list {
+      list-style: none; padding: 0; margin: 0;
+      display: grid; gap: 4px 8px;
+    }
+    .year-list li { line-height: 1.6; }
+    .year-list li a { white-space: nowrap; }
+
+    .year-list.collapsed {
+      max-height: 12.5rem;
+      overflow: hidden;
+      position: relative;
+    }
+    .year-list.collapsed::after {
+      content: "";
+      position: absolute;
+      inset: auto 0 0 0;
+      height: 3rem;
+      background: linear-gradient(to bottom, rgba(255,255,255,0), var(--card-bg, #fff));
+      pointer-events: none;
+    }
+
+    .toggle {
+      display: inline-block;
+      margin-top: 6px;
+      font-size: 0.9rem;
+      padding: 4px 10px;
+      border: 1px solid var(--border, #ddd);
+      border-radius: 999px;
+      background: var(--btn-bg, #fff);
+      cursor: pointer;
+    }
+    .toggle:hover { background: #f8f8f8; }
+  </style>
 </Base>
