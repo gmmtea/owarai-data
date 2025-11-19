@@ -81,6 +81,7 @@ function computeRankSort(rankRaw) {
   if (r === "ベスト8") return 12;
   if (r === "ファーストステージ敗退") return 12;
   if (r === "準決勝進出") return 50;
+  if (r === "認定漫才師") return 50;
   if (r === "ベスト16") return 50;
   if (r === "準々決勝進出") return 100;
   if (r === "ベスト32") return 100;
