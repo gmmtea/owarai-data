@@ -4,6 +4,7 @@ import type { CoListItem } from "../../lib/queries";
 import {
   listComedianIdsWithProfile,
   getComedianTables,
+  getComedianTablesByYear,
   getUnitMembers,
   getPersonUnits,
   getRelatedUnitsForUnit,
@@ -118,6 +119,9 @@ const sections: Section[] = Object.entries(byComp).map(([comp, block]: any) => {
   } as any;
 });
 
+const dataYear = getComedianTablesByYear(id)!;
+const yearBlocks = dataYear.byYear;
+
 // タイトル用の表示名を作成
 const titleName =
   typeof comedian.note === "string" && comedian.note.trim() !== ""
@@ -224,98 +228,196 @@ const klass = Astro.props.class ?? "";
     </p>
   )}
 
-  {sections.map((sec) => (
-    <section>
-      <h2>{sec.competition_name}</h2>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th class="sticky-1 col-year">回</th>
-              <th class="sticky-2 col-rank">順位</th>
-              {sec.columns.map((c) => (
-                <th class={c.col_class ?? ""}>{c.label ?? c.key}</th>
-              ))}
-              {sec.showAlias && <th class="col-alias">名義</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {sec.rows.map((r: any) => {
-              const label = r.short_label ?? (r.year != null ? `${r.year}` : "—");
-              const linkable = r.year != null;
-              return (
+  <!-- 表示モード切替 -->
+  <div class="view-toggle" id="view-toggle" data-mode="comp">
+    <button type="button" data-go="comp" class="btn is-active">大会ごと</button>
+    <button type="button" data-go="year" class="btn">年ごと</button>
+  </div>
+
+  <!-- 大会ごと表示 -->
+  <div id="view-comp">
+    {sections.map((sec) => (
+      <section>
+        <h2>{sec.competition_name}</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th class="sticky-1 col-year">回</th>
+                <th class="sticky-2 col-rank">順位</th>
+                {sec.columns.map((c:any) => (
+                  <th class={c.col_class ?? ""}>{c.label ?? c.key}</th>
+                ))}
+                {sec.showAlias && <th class="col-alias">名義</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {sec.rows.map((r: any) => {
+                const label = r.short_label ?? (r.year != null ? `${r.year}` : "—");
+                const linkable = r.year != null;
+                return (
+                  <tr>
+                    <td class="sticky-1 col-year">
+                      {linkable ? (
+                        <a href={`${base}${sec.comp}/${r.year}`}>{label}</a>
+                      ) : (
+                        <span class="muted">{label}</span>
+                      )}
+                    </td>
+                    <td class="sticky-2 col-rank">
+                      <span class="badge" data-ranksort={r.rank_sort}>{r.rank}</span>
+                    </td>
+                    {sec.columns.map((c:any) => {
+                      const v = r[c.key];
+                      const text = v == null ? "" : String(v);
+                      const cls = [c.col_class ?? "", c.is_multiline === 1 ? "multiline" : ""].filter(Boolean).join(" ");
+                      if (c.key === "first_order") {
+                        const ord = v; const grp = r["first_group"];
+                        const t = (ord == null || String(ord).trim() === "") ? "" : `${grp ? grp + "-" : ""}${ord}番`;
+                        return <td class={cls}>{t}</td>;
+                      }
+                      if (c.related_key) {
+                        const url = r[c.related_key] ? String(r[c.related_key]) : "";
+                        const isYouTube = !!url && /(?:^https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\//i.test(url);
+                        return (
+                          <td class={cls}>
+                            {text}{url && " "}
+                            {url && (
+                              <a class={`video-link ${isYouTube ? "video-youtube" : ""}`} href={url} target="_blank" rel="noopener noreferrer" aria-label={isYouTube ? "YouTubeで見る" : "動画を見る"}>
+                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                  <path fill="currentColor" d="M23.5 6.2a4 4 0 0 0-2.8-2.8C18.5 3 12 3 12 3S5.5 3 3.3 3.4A4 4 0 0 0 .5 6.2 41 41 0 0 0 0 12c0 2 .2 3.8.5 5.8a4 4 0 0 0 2.8 2.8C5.5 21 12 21 12 21s6.5 0 8.7-.4a4 4 0 0 0 2.8-2.8c.3-2 .5-3.8.5-5.8s-.2-3.8-.5-5.8ZM9.75 15.02V8.98L15.5 12l-5.75 3.02Z"/>
+                                </svg>
+                              </a>
+                            )}
+                          </td>
+                        );
+                      }
+                      return <td class={cls}>{text}</td>;
+                    })}
+                    {sec.showAlias && <td class="col-alias">{r.alias_label}</td>}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    ))}
+  </div>
+
+  <!-- 年ごと表示（新規） -->
+  <div id="view-year" hidden>
+    {yearBlocks.map((blk) => (
+      <section>
+        <h2>{blk.year != null ? `${blk.year}年` : "年不明"}</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th class="sticky-1 col-comp">大会</th>
+                <th class="sticky-2 col-rank">順位</th>
+                {blk.columns.map((c:any) => (
+                  <th class={c.col_class ?? ""}>{c.label ?? c.key}</th>
+                ))}
+                {blk.showAlias && <th class="col-alias">名義</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {blk.rows.map((r:any) => (
                 <tr>
-                  <td class="sticky-1 col-year">
-                    {linkable ? (
-                      <a href={`${base}${sec.comp}/${r.year}`}>{label}</a>
-                    ) : (
-                      <span class="muted">{label}</span>
-                    )}
+                  <td class="sticky-1 col-comp">
+                    <a href={`${base}${r.comp}/${r.year}`}>{r.competition_name}</a>
                   </td>
-                  <td class="sticky-2 col-rank">
-                    <span class="badge" data-ranksort={r.rank_sort}>{r.rank}</span>
-                  </td>
-                  {sec.columns.map((c) => {
+                  <td class="sticky-2 col-rank"><span class="badge" data-ranksort={r.rank_sort}>{r.rank}</span></td>
+                  {blk.columns.map((c:any) => {
                     const v = r[c.key];
                     const text = v == null ? "" : String(v);
-                    const cls = [c.col_class ?? "", c.is_multiline === 1 ? "multiline" : ""]
-                      .filter(Boolean)
-                      .join(" ");
-
-                    // 1本目出順は「A-2番」形式で表示（first_group があれば先頭に付ける）
+                    const cls = [c.col_class ?? "", c.is_multiline === 1 ? "multiline" : ""].filter(Boolean).join(" ");
                     if (c.key === "first_order") {
-                      const ord = v;
-                      const grp = r["first_group"];  // queries 側で隠し列として入っている
-                      const text =
-                        ord == null || String(ord).trim() === ""
-                          ? ""
-                          : `${grp ? grp + "-" : ""}${ord}番`;
-                      return <td class={cls}>{text}</td>;
+                      const ord = v; const grp = r["first_group"];
+                      const t = (ord == null || String(ord).trim() === "") ? "" : `${grp ? grp + "-" : ""}${ord}番`;
+                      return <td class={cls}>{t}</td>;
                     }
-
                     if (c.related_key) {
                       const url = r[c.related_key] ? String(r[c.related_key]) : "";
-                      const isYouTube =
-                        !!url &&
-                        /(?:^https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\//i.test(url);
+                      const isYouTube = !!url && /(?:^https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\//i.test(url);
                       return (
                         <td class={cls}>
-                          {text}
-                          {url && " "}
+                          {text}{url && " "}
                           {url && (
-                            <a
-                              class={`video-link ${isYouTube ? "video-youtube" : ""}`}
-                              href={url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              aria-label={isYouTube ? "YouTubeで見る" : "動画を見る"}
-                            >
-                              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                                <path
-                                  fill="currentColor"
-                                  d="M23.5 6.2a4 4 0 0 0-2.8-2.8C18.5 3 12 3 12 3S5.5 3 3.3 3.4A4 4 0 0 0 .5 6.2 41 41 0 0 0 0 12c0 2 .2 3.8.5 5.8a4 4 0 0 0 2.8 2.8C5.5 21 12 21 12 21s6.5 0 8.7-.4a4 4 0 0 0 2.8-2.8c.3-2 .5-3.8.5-5.8s-.2-3.8-.5-5.8ZM9.75 15.02V8.98L15.5 12l-5.75 3.02Z"
-                                />
+                            <a class={`video-link ${isYouTube ? "video-youtube" : ""}`} href={url} target="_blank" rel="noopener noreferrer" aria-label={isYouTube ? "YouTubeで見る" : "動画を見る"}>
+                              <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path fill="currentColor" d="M23.5 6.2a4 4 0 0 0-2.8-2.8C18.5 3 12 3 12 3S5.5 3 3.3 3.4A4 4 0 0 0 .5 6.2 41 41 0 0 0 0 12c0 2 .2 3.8.5 5.8a4 4 0 0 0 2.8 2.8C5.5 21 12 21 12 21s6.5 0 8.7-.4a4 4 0 0 0 2.8-2.8c.3-2 .5-3.8.5-5.8s-.2-3.8-.5-5.8ZM9.75 15.02V8.98L15.5 12l-5.75 3.02Z"/>
                               </svg>
                             </a>
                           )}
                         </td>
                       );
                     }
-
                     return <td class={cls}>{text}</td>;
                   })}
-                  {sec.showAlias && <td class="col-alias">{r.alias_label}</td>}
+                  {blk.showAlias && <td class="col-alias">{r.alias_label}</td>}
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  ))}
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    ))}
+  </div>
 
   <style>
+    .view-toggle { display:flex; gap:0.5rem; margin:1rem 0; }
+    .btn { border:1px solid var(--border, #ccc); padding:0.3rem 0.6rem; border-radius:6px; background:#fff; cursor: pointer; }
+    .btn.is-active { background: var(--accent-weak, #eef6ff); }
     .ext-link { display:inline-flex; gap:0.25rem; align-items:center; }
     .ext-ico  { width:1em; height:1em; fill: currentColor; }
   </style>
+
+  <script is:inline>
+    const STORAGE_KEY = 'co.viewMode'; // 'comp' | 'year'
+
+    const wrap  = document.getElementById('view-toggle');
+    const btns  = Array.from(wrap?.querySelectorAll('button[data-go]') ?? []);
+    const vComp = document.getElementById('view-comp');
+    const vYear = document.getElementById('view-year');
+
+    function setMode(mode, { persist = true, updateUrl = true } = {}) {
+      if (!wrap || !vComp || !vYear) return;
+      wrap.setAttribute('data-mode', mode);
+      btns.forEach(b => b.classList.toggle('is-active', b.dataset.go === mode));
+      vComp.hidden = (mode !== 'comp');
+      vYear.hidden = (mode !== 'year');
+      if (persist) localStorage.setItem(STORAGE_KEY, mode);
+      if (updateUrl) {
+        const u = new URL(location.href);
+        u.searchParams.set('view', mode);
+        history.replaceState(null, '', u);
+      }
+    }
+
+    function readInitialMode() {
+      const q = new URL(location.href).searchParams.get('view');
+      if (q === 'year' || q === 'comp') return q;
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved === 'year' || saved === 'comp') return saved;
+      return 'comp';
+    }
+
+    btns.forEach(b => {
+      b.addEventListener('click', () => {
+        const next = (b.dataset.go === 'year') ? 'year' : 'comp';
+        setMode(next);
+      });
+    });
+
+    // 戻る/進むでURLのviewが変わったときも反映
+    window.addEventListener('popstate', () => {
+      const q = new URL(location.href).searchParams.get('view');
+      if (q === 'year' || q === 'comp') setMode(q, { persist: false, updateUrl: false });
+    });
+
+    // 初期表示（URL > localStorage > 既定）
+    setMode(readInitialMode(), { persist: false, updateUrl: false });
+  </script>
 </Base>

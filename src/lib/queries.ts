@@ -299,6 +299,231 @@ export function getComedianTables(comedianId: string) {
   return { comedian: co, byComp };
 }
 
+/* 芸人ページ：年ごとに縦表（同年内で全大会の列メタをユニオン） */
+export function getComedianTablesByYear(comedianId: string) {
+  const me = db().prepare(`
+    SELECT id, COALESCE(canonical_id, id) AS root_id
+    FROM comedians WHERE id=?
+  `).get(comedianId) as { id:string; root_id:string } | undefined;
+  if (!me) return null;
+
+  // 同じ root に属する全ID（代表＋別名）
+  const ids = db().prepare(`
+    SELECT id FROM comedians WHERE COALESCE(canonical_id, id)=?
+  `).all(me.root_id) as {id:string}[];
+  const idList = ids.map(x => x.id);
+
+  // 見出し用（代表）
+  const co = db().prepare(`
+    SELECT
+      id, name, reading, NULLIF(TRIM(note), '') AS note, kind, m1_url
+    FROM comedians
+    WHERE id=?
+    LIMIT 1
+  `).get(me.root_id) as {
+    id:string; name:string; reading:string|null; note:string|null; kind:'person'|'unit'|null; m1_url:string|null
+  } | undefined;
+  if (!co) return null;
+
+  // まず全行を取得（同じSQLだが ORDER は年→大会の順に）
+  const rows = db().prepare(`
+    SELECT
+      e.id   AS edition_id,
+      e.year,
+      e.short_label,
+      e.final_date,
+      COALESCE(CAST(STRFTIME('%Y%m%d', e.final_date) AS INTEGER), 0) AS final_sort,
+      c.key  AS comp,
+      c.name AS competition_name,
+      c.sort_order AS comp_sort_order,
+      fr.rank,
+      fr.rank_sort,
+      co.id   AS comedian_id,
+      co.name AS comedian_name,
+      COALESCE(co.canonical_id, co.id) AS link_id,
+      CASE WHEN co.canonical_id IS NOT NULL
+        THEN '「' || co.name || '」として'
+        ELSE ''
+      END AS alias_label
+    FROM final_results fr
+    JOIN editions e     ON e.id=fr.edition_id
+    JOIN competitions c ON c.id=e.competition_id
+    JOIN comedians  co  ON co.id=fr.comedian_id
+    WHERE fr.comedian_id IN (${idList.map(()=>"?").join(",")})
+    ORDER BY (e.year IS NULL), e.year DESC, (c.sort_order IS NULL), c.sort_order, c.key
+  `).all(...idList) as Array<{
+    edition_id:number; year:number|null; short_label:string|null;
+    final_date:string|null; final_sort:number;
+    comp:string; competition_name:string; comp_sort_order:number|null;
+    rank:string; rank_sort:number;
+    comedian_id:string; comedian_name:string; link_id:string; alias_label:string;
+  }>;
+
+  type ColumnMeta = {
+    key: string;
+    label?: string | null;
+    pref_order?: number | null;
+    is_multiline?: 0 | 1 | null;
+    col_class?: string | null;
+    related_key?: string | null;
+  };
+
+  // 同一年に含まれる edition の列メタをユニオン
+  const unionColumns = (colsArrays: ColumnMeta[][]): ColumnMeta[] => {
+    const seen = new Set<string>();
+    const out: ColumnMeta[] = [];
+    for (const arr of colsArrays) {
+      for (const c of arr) {
+        if (seen.has(c.key)) continue;
+        seen.add(c.key);
+        out.push(c);
+      }
+    }
+    out.sort((a, b) => {
+      const ap = a.pref_order ?? 9_999_999;
+      const bp = b.pref_order ?? 9_999_999;
+      return ap !== bp ? ap - bp : String(a.key).localeCompare(String(b.key));
+    });
+    return out;
+  };
+
+  const isNonEmptyString = (v: unknown) => (typeof v === "string" ? v.trim() !== "" : v != null);
+
+  const columnIsVisible = (c: ColumnMeta, rows: any[]) => {
+    for (const r of rows) {
+      if (c.key === "first_order") {
+        const v = r[c.key];
+        if (v !== null && v !== undefined && String(v).trim() !== "") return true;
+        continue;
+      }
+      if (c.related_key) {
+        const text = r[c.key];
+        const url  = r[c.related_key];
+        if (isNonEmptyString(text) || isNonEmptyString(url)) return true;
+        continue;
+      }
+      if (isNonEmptyString(r[c.key])) return true;
+    }
+    return false;
+  };
+
+  // edition_id ごとに、その芸人の追加列＋関連動画列を取り出すヘルパ（既存関数と同形）
+  function loadExtrasForEditionRow(edition_id:number, comedian_id:string) {
+    const cols = listUsedColumnsWithMeta(edition_id);
+    const hiddenMovieKeys = Array.from(new Set(
+      cols.map(c => c.related_key).filter(Boolean) as string[]
+    ));
+    const hiddenKeys = [
+      ...hiddenMovieKeys,
+      ...(hasFirstGroup ? ["first_group"] : [])
+    ];
+    const selectExtra = [
+      ...cols.map(c => `"${c.key}" AS "${c.key}"`),
+      ...hiddenKeys.map(k => `"${k}" AS "${k}"`)
+    ].join(", ");
+
+    const sql = `
+      SELECT ${selectExtra || "1"}
+      FROM final_results
+      WHERE edition_id=? AND comedian_id=?
+      LIMIT 1
+    `;
+    const extra = selectExtra ? db().prepare(sql).get(edition_id, comedian_id) as any : {};
+    return { cols, extra };
+  }
+
+  // 年ごとに集約
+  const byYearMap = new Map<number|null, {
+    year:number|null;
+    short_labels:Set<string|null>;
+    rows:any[];
+    columns: ColumnMeta[];    // ユニオン前は空、最後に決定
+    showAlias:boolean;
+    _colsBucket: ColumnMeta[][];
+  }>();
+
+  for (const r of rows) {
+    let y = byYearMap.get(r.year);
+    if (!y) {
+      y = { year: r.year, short_labels: new Set(), rows: [], columns: [], showAlias:false, _colsBucket: [] };
+      byYearMap.set(r.year, y);
+    }
+    y.short_labels.add(r.short_label);
+
+    const { cols, extra } = loadExtrasForEditionRow(r.edition_id, r.comedian_id);
+    restoreMultilineInRow(extra, cols);
+    y._colsBucket.push(cols);
+
+    // 年ビューでは1列目に大会名を出すので comp 情報を保持
+    y.rows.push({
+      ...r,
+      ...extra,
+    });
+
+    if (!y.showAlias) {
+      y.showAlias = typeof r.alias_label === "string" && r.alias_label.trim() !== "";
+    }
+  }
+
+  const toSortNum = (s: string | null | undefined): number => {
+    if (!s) return 0;
+    // 許容: 2024-7-7 / 2024-07-07 / 2024/7/7 / 2024/07/07
+    const m = String(s).match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+    if (!m) return 0;
+    const y = Number(m[1]);
+    const mo = Number(m[2]);
+    const d = Number(m[3]);
+    if (!y || !mo || !d) return 0;
+    return y * 10000 + mo * 100 + d; // 例: 2024-7-7 → 20240707
+  };
+
+  // rows を byYearMap に詰め終わった後、ソート前に実行
+  for (const y of byYearMap.values()) {
+    for (const r of y.rows) {
+      if (typeof r.final_sort !== 'number' || r.final_sort === 0) {
+        r.final_sort = toSortNum(r.final_date);
+      }
+    }
+  }
+
+  const byYear = Array.from(byYearMap.values())
+    .map(y => {
+      const columns = unionColumns(y._colsBucket);
+      const vis = columns.filter(c => columnIsVisible(c, y.rows));
+      // 表示順：同年内で大会→順位→読み順（既存と整合）
+      y.rows.sort((a:any, b:any) => {
+        const af = typeof a.final_sort === 'number' ? a.final_sort : 0;
+        const bf = typeof b.final_sort === 'number' ? b.final_sort : 0;
+        if (af !== bf) return bf - af; // 降順。0は自然に末尾側へ
+
+        // タイブレーク：大会ソート順 → 順位 → 読み/名前
+        const ao = a.comp_sort_order ?? 9_999_999;
+        const bo = b.comp_sort_order ?? 9_999_999;
+        if (ao !== bo) return ao - bo;
+
+        const ars = a.rank_sort ?? 9_999_999;
+        const brs = b.rank_sort ?? 9_999_999;
+        if (ars !== brs) return ars - brs;
+
+        const ax = (a.comedian_reading ?? a.comedian_name) as string;
+        const bx = (b.comedian_reading ?? b.comedian_name) as string;
+        return ax.localeCompare(bx, 'ja');
+      });
+
+      return {
+        year: y.year,
+        short_label: Array.from(y.short_labels).find(v => v != null) ?? null,
+        columns: vis,
+        rows: y.rows,
+        showAlias: y.showAlias,
+      };
+    })
+    // 年降順、null は末尾
+    .sort((a, b) => (a.year == null ? 1 : b.year == null ? -1 : b.year - a.year));
+
+  return { comedian: co, byYear };
+}
+
 /* 審査員・個票 */
 export function getEditionJudges(comp: string, year: number) {
   const ed = db().prepare(`

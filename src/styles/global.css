@@ -230,6 +230,7 @@ tbody tr:hover{ background:#fff8f1 }
 }
 .col-name   { min-width: 160px }
 .col-catch  { min-width: 200px }
+.col-comp   { min-width: 160px }
 .col-order  { min-width: 60px }
 .col-result { min-width: 60px }
 .col-title  { min-width: 160px }
