@@ -287,6 +287,17 @@ others.sort((a, b) => {
       const visibles = spans.filter(
         (s) => !s.hasAttribute('hidden')
       );
+
+      // この行に表示対象が1件も無ければ、行ごと隠す
+      if (visibles.length === 0) {
+        line.hidden = true;
+        return;
+      }
+
+      // 1件以上あれば行は表示
+      line.hidden = false;
+
+      // 表示対象のみ「 / 」を付け直す
       visibles.forEach((span, idx) => {
         let first = span.firstChild;
         if (!first || first.nodeType !== Node.TEXT_NODE) {
