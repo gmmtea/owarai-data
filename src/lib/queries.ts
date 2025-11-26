@@ -180,9 +180,9 @@ export function listComediansAll(): { id: string; name: string; reading: string 
 }
 
 // 代表だけ（一覧用既定）
-export function listComediansCanonicalOnly(): { id: string; name: string; reading: string | null }[] {
+export function listComediansCanonicalOnly(): { id: string; name: string; reading: string | null; kind: "unit" | "person" }[] {
   return db().prepare(`
-    SELECT id, name, reading
+    SELECT id, name, reading, kind
     FROM comedians
     WHERE canonical_id IS NULL
       AND COALESCE(has_profile, 0) = 1
