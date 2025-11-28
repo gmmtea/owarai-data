@@ -87,11 +87,24 @@ const raw = listComediansCanonicalOnly();
 // 1) 読みを付与
 const enriched = raw.map(r => {
   const reading = decideReading(r.name, r.reading);
-  return { ...r, reading, kind: r.kind };
+  return {
+    ...r,
+    reading,
+    kind: r.kind as "unit" | "person",
+    m1_rank_sort: r.m1_rank_sort,
+    koc_rank_sort: r.koc_rank_sort,
+  };
 });
 
 // 2) 行→サブキーの2段バケット
-type Item = { id: string; name: string; reading: string; kind: "unit" | "person" };
+type Item = {
+   id: string;
+   name: string;
+   reading: string;
+   kind: "unit" | "person";
+   m1_rank_sort: number | null;   // 例: 1, 2, 4, 50, 100, 500... / null
+   koc_rank_sort: number | null;
+};
 type RowBuckets = Record<string, Record<string, Item[]>>;
 const rowBuckets: RowBuckets = {};
 
@@ -110,7 +123,14 @@ for (const r of enriched) {
 
   const gi = baseHead ? groupIndex(baseHead) : -1;
   if (gi < 0) {
-    others.push({ id: r.id, name: r.name, reading: rd, kind: r.kind });
+    others.push({
+      id: r.id,
+      name: r.name,
+      reading: rd,
+      kind: r.kind,
+      m1_rank_sort: r.m1_rank_sort,
+      koc_rank_sort: r.koc_rank_sort
+    });
     continue;
   }
   const rowKey = groups[gi].key;
@@ -124,7 +144,14 @@ for (const r of enriched) {
       ? "ん"
       : subList[0]; // 万一取りこぼしがあれば行の先頭へ
 
-  rowBuckets[rowKey][subKey].push({ id: r.id, name: r.name, reading: rd, kind: r.kind });
+  rowBuckets[rowKey][subKey].push({
+    id: r.id,
+    name: r.name,
+    reading: rd,
+    kind: r.kind,
+    m1_rank_sort: r.m1_rank_sort,
+    koc_rank_sort: r.koc_rank_sort
+  });
 }
 
 // 3) ソート（各サブバケット内を reading→name）
@@ -157,13 +184,41 @@ others.sort((a, b) => {
 
   <h1>
     芸人一覧
-    <span id="co-count" class="count"></span>
+    <span id="co-count" class="co-count"></span>
   </h1>
 
-  <div id="kind-tabs" class="kind-tabs" data-kind="all">
-    <button type="button" class="kind-tab is-active" data-kind="all">すべて</button>
-    <button type="button" class="kind-tab" data-kind="unit">ユニット</button>
-    <button type="button" class="kind-tab" data-kind="person">個人</button>
+  <div class="co-filter">
+    <div class="co-filter-row">
+      <!-- 種別タブ -->
+      <div id="kind-tabs" class="kind-tabs" data-kind="all">
+        <button type="button" class="kind-tab is-active" data-kind="all">すべて</button>
+        <button type="button" class="kind-tab" data-kind="unit">ユニット</button>
+        <button type="button" class="kind-tab" data-kind="person">個人</button>
+      </div>
+    </div>
+
+    <div class="co-filter-row">
+      <!-- M-1 成績タブ -->
+      <div id="m1-tabs" class="kind-tabs result-tabs" data-m1="any">
+        <span class="result-label">M-1 進出経験:</span>
+        <button type="button" class="kind-tab is-active" data-m1="any">指定なし</button>
+        <button type="button" class="kind-tab" data-m1="quarter">準々決勝</button>
+        <button type="button" class="kind-tab" data-m1="semi">準決勝</button>
+        <button type="button" class="kind-tab" data-m1="final">決勝</button>
+        <button type="button" class="kind-tab" data-m1="win">優勝</button>
+      </div>
+    </div>
+
+    <div class="co-filter-row">
+      <!-- KOC 成績タブ -->
+      <div id="koc-tabs" class="kind-tabs result-tabs" data-koc="any">
+        <span class="result-label">KOC 進出経験:</span>
+        <button type="button" class="kind-tab is-active" data-koc="any">指定なし</button>
+        <button type="button" class="kind-tab" data-koc="semi">準決勝</button>
+        <button type="button" class="kind-tab" data-koc="final">決勝</button>
+        <button type="button" class="kind-tab" data-koc="win">優勝</button>
+      </div>
+    </div>
   </div>
 
   {/* 表示：サブキー1文字を太字＋コロンで先頭に置く */}
@@ -178,9 +233,14 @@ others.sort((a, b) => {
             <p class="name-line">
               <strong>{sub}</strong>:{" "}
               {arr.map((it, i) => (
-                <span class="co-item" data-kind={it.kind}>
+                <span
+                  class="co-item"
+                  data-kind={it.kind}
+                  data-m1-rank={it.m1_rank_sort ?? ""}
+                  data-koc-rank={it.koc_rank_sort ?? ""}
+                >
                   {i > 0 && " / "}
-                  <a href={`${base}co/${it.id}`}>{it.name}</a>
+                  <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
                 </span>
               ))}
             </p>
@@ -198,9 +258,14 @@ others.sort((a, b) => {
       <h2>その他</h2>
       <p class="name-line">
         {others.map((it, i) => (
-          <span class="co-item" data-kind={it.kind}>
+          <span
+            class="co-item"
+            data-kind={it.kind}
+            data-m1-rank={it.m1_rank_sort ?? ""}
+            data-koc-rank={it.koc_rank_sort ?? ""}
+          >
             {i > 0 && " / "}
-            <a href={`${base}co/${it.id}`}>{it.name}</a>
+            <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
           </span>
         ))}
       </p>
@@ -234,7 +299,7 @@ others.sort((a, b) => {
     background: var(--accent-weak, #eef6ff);
     font-weight: 600;
   }
-  .count {
+  .co-count {
     margin-left: 0.5rem;
     font-size: 0.9rem;
     color: var(--muted, #666);
@@ -242,16 +307,44 @@ others.sort((a, b) => {
   .co-item[hidden] {
     display: none;
   }
+
+  .co-filter {
+    margin: 0.75rem 0 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .co-filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem 1.5rem;
+  }
+
+  .result-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .result-label {
+    font-size: 0.9rem;
+    opacity: 0.7;
+  }
+
+  /* すべて hidden の行は非表示 */
+  .name-line.is-empty {
+    display: none;
+  }
 </style>
 
 <script is:inline>
-  const STORAGE_KEY = 'co.index.kind';
-  const ALLOWED = ['all', 'unit', 'person'];
+  const STORAGE_KEY = 'co.index.filter';
+  const KIND_ALLOWED = ['all', 'unit', 'person'];
+  const RESULT_ALLOWED = ['any', 'quarter', 'semi', 'final', 'win'];
 
-  const tabsWrap = document.getElementById('kind-tabs');
-  const tabButtons = Array.from(
-    tabsWrap?.querySelectorAll('button[data-kind]') ?? []
-  );
   const nameLines = Array.from(
     document.querySelectorAll('.name-line')
   );
@@ -260,51 +353,97 @@ others.sort((a, b) => {
   );
   const countEl = document.getElementById('co-count');
 
-  function normalizeKind(value) {
-    if (!value) return 'all';
-    return ALLOWED.includes(value) ? value : 'all';
+  function parseRankSort(v) {
+    if (v == null || v === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
   }
 
-  function resolveInitialKind() {
-    try {
-      const url = new URL(window.location.href);
-      const q = url.searchParams.get('kind');
-      if (q && ALLOWED.includes(q)) return q;
-    } catch (_) {}
-    try {
-      const saved = window.localStorage.getItem(STORAGE_KEY);
-      if (saved && ALLOWED.includes(saved)) return saved;
-    } catch (_) {}
-    return 'all';
+  function matchKind(itemKind, cond) {
+    if (cond === 'all') return true;
+    return itemKind === cond;
   }
 
-  // 各行の「 / 」の位置を、現在 visible な要素に合わせて付け直す
-  function updateSeparators() {
-    nameLines.forEach((line) => {
-      const spans = Array.from(
-        line.querySelectorAll('.co-item')
-      );
-      const visibles = spans.filter(
-        (s) => !s.hasAttribute('hidden')
-      );
+  // rank_sort の規則:
+  // 1: 優勝, 2: 準優勝, 4〜12: 決勝順位, 50: 準決勝, 100: 準々決勝...
+  function matchResultFilter(rankSort, cond) {
+    if (cond === 'any') return true;
+    if (rankSort == null) return false;
 
-      // この行に表示対象が1件も無ければ、行ごと隠す
+    if (cond === 'win')   return rankSort === 1;
+    if (cond === 'final') return rankSort <= 12;
+    if (cond === 'semi')  return rankSort <= 50;
+    if (cond === 'quarter') return rankSort <= 100;
+    return true;
+  }
+
+  function readStateFromUrlAndStorage() {
+    const def = { kind: 'all', m1: 'any', koc: 'any' };
+
+    try {
+      const url = new URL(location.href);
+      const kindQ = url.searchParams.get('kind');
+      const m1Q   = url.searchParams.get('m1');
+      const kocQ  = url.searchParams.get('koc');
+
+      const fromUrl = {
+        kind: KIND_ALLOWED.includes(kindQ || '') ? kindQ : null,
+        m1:   RESULT_ALLOWED.includes(m1Q || '') ? m1Q   : null,
+        koc:  RESULT_ALLOWED.includes(kocQ || '') ? kocQ : null,
+      };
+      if (fromUrl.kind || fromUrl.m1 || fromUrl.koc) {
+        return {
+          kind: fromUrl.kind || def.kind,
+          m1:   fromUrl.m1   || def.m1,
+          koc:  fromUrl.koc  || def.koc,
+        };
+      }
+    } catch (_) {}
+
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const kind = KIND_ALLOWED.includes(parsed.kind) ? parsed.kind : def.kind;
+        const m1   = RESULT_ALLOWED.includes(parsed.m1) ? parsed.m1   : def.m1;
+        const koc  = RESULT_ALLOWED.includes(parsed.koc) ? parsed.koc : def.koc;
+        return { kind, m1, koc };
+      }
+    } catch (_) {}
+
+    return def;
+  }
+
+  function writeStateToUrlAndStorage(state) {
+    try {
+      const url = new URL(location.href);
+      url.searchParams.set('kind', state.kind);
+      url.searchParams.set('m1',   state.m1);
+      url.searchParams.set('koc',  state.koc);
+      history.replaceState(null, '', url);
+    } catch (_) {}
+
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (_) {}
+  }
+
+  // 行内の「 / 」と空行判定を更新
+  function updateSeparatorsAndEmptyLines() {
+    nameLines.forEach(line => {
+      const spans = Array.from(line.querySelectorAll('.co-item'));
+      const visibles = spans.filter(s => !s.hasAttribute('hidden'));
+
       if (visibles.length === 0) {
-        line.hidden = true;
-        return;
+        line.classList.add('is-empty');
+      } else {
+        line.classList.remove('is-empty');
       }
 
-      // 1件以上あれば行は表示
-      line.hidden = false;
-
-      // 表示対象のみ「 / 」を付け直す
       visibles.forEach((span, idx) => {
         let first = span.firstChild;
         if (!first || first.nodeType !== Node.TEXT_NODE) {
-          first = span.insertBefore(
-            document.createTextNode(''),
-            span.firstChild
-          );
+          first = span.insertBefore(document.createTextNode(''), span.firstChild);
         }
         first.textContent = idx === 0 ? '' : ' / ';
       });
@@ -313,25 +452,21 @@ others.sort((a, b) => {
 
   function updateCount() {
     if (!countEl) return;
-    const visibleCount = coItems.filter(
-      (el) => !el.hasAttribute('hidden')
-    ).length;
+    const visibleCount = coItems.filter(el => !el.hasAttribute('hidden')).length;
     countEl.textContent = `（${visibleCount}件）`;
   }
 
-  function applyKind(kind, { persist = true, updateUrl = true } = {}) {
-    const k = normalizeKind(kind);
+  function applyFilter(state) {
+    coItems.forEach(el => {
+      const itemKind = el.getAttribute('data-kind') || 'unit';
+      const m1Rank   = parseRankSort(el.getAttribute('data-m1-rank'));
+      const kocRank  = parseRankSort(el.getAttribute('data-koc-rank'));
 
-    if (tabsWrap) {
-      tabsWrap.setAttribute('data-kind', k);
-    }
-    tabButtons.forEach((btn) => {
-      btn.classList.toggle('is-active', btn.dataset.kind === k);
-    });
+      const okKind = matchKind(itemKind, state.kind);
+      const okM1   = matchResultFilter(m1Rank, state.m1);
+      const okKoc  = matchResultFilter(kocRank, state.koc);
 
-    coItems.forEach((el) => {
-      const itemKind = el.getAttribute('data-kind');
-      const show = k === 'all' || itemKind === k;
+      const show = okKind && okM1 && okKoc;
       if (show) {
         el.removeAttribute('hidden');
       } else {
@@ -339,44 +474,74 @@ others.sort((a, b) => {
       }
     });
 
-    updateSeparators();
+    updateSeparatorsAndEmptyLines();
     updateCount();
-
-    if (persist) {
-      try {
-        window.localStorage.setItem(STORAGE_KEY, k);
-      } catch (_) {}
-    }
-
-    if (updateUrl) {
-      try {
-        const url = new URL(window.location.href);
-        url.searchParams.set('kind', k);
-        window.history.replaceState(null, '', url);
-      } catch (_) {}
-    }
   }
 
-  tabButtons.forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const next = btn.dataset.kind || 'all';
-      applyKind(next);
+  function setActiveTab(container, attrName, value) {
+    if (!container) return;
+    container.setAttribute(`data-${attrName}`, value);
+    const buttons = Array.from(container.querySelectorAll('.kind-tab'));
+    buttons.forEach(b => {
+      b.classList.toggle('is-active', b.dataset[attrName] === value);
     });
-  });
+  }
 
-  window.addEventListener('popstate', () => {
-    try {
-      const url = new URL(window.location.href);
-      const q = url.searchParams.get('kind');
-      if (q && ALLOWED.includes(q)) {
-        applyKind(q, { persist: false, updateUrl: false });
-      }
-    } catch (_) {}
-  });
+  function syncTabs(state) {
+    setActiveTab(document.getElementById('kind-tabs'), 'kind', state.kind);
+    setActiveTab(document.getElementById('m1-tabs'),   'm1',   state.m1);
+    setActiveTab(document.getElementById('koc-tabs'),  'koc',  state.koc);
+  }
 
-  // 初期表示：URL > localStorage > all
-  applyKind(resolveInitialKind(), {
-    persist: false,
-    updateUrl: false,
-  });
+  function setupFilter() {
+    const kindWrap = document.getElementById('kind-tabs');
+    const m1Wrap   = document.getElementById('m1-tabs');
+    const kocWrap  = document.getElementById('koc-tabs');
+    if (!kindWrap || !m1Wrap || !kocWrap) return;
+
+    let state = readStateFromUrlAndStorage();
+    syncTabs(state);
+    applyFilter(state);
+
+    function wireTabs(container, attrName, onChange) {
+      const buttons = Array.from(container.querySelectorAll('.kind-tab'));
+      buttons.forEach(b => {
+        b.addEventListener('click', () => {
+          const v = b.dataset[attrName];
+          if (!v) return;
+          onChange(v);
+        });
+      });
+    }
+
+    wireTabs(kindWrap, 'kind', (v) => {
+      state = { ...state, kind: v };
+      setActiveTab(kindWrap, 'kind', v);
+      writeStateToUrlAndStorage(state);
+      applyFilter(state);
+    });
+
+    wireTabs(m1Wrap, 'm1', (v) => {
+      state = { ...state, m1: v };
+      setActiveTab(m1Wrap, 'm1', v);
+      writeStateToUrlAndStorage(state);
+      applyFilter(state);
+    });
+
+    wireTabs(kocWrap, 'koc', (v) => {
+      state = { ...state, koc: v };
+      setActiveTab(kocWrap, 'koc', v);
+      writeStateToUrlAndStorage(state);
+      applyFilter(state);
+    });
+
+    window.addEventListener('popstate', () => {
+      const st = readStateFromUrlAndStorage();
+      state = st;
+      syncTabs(state);
+      applyFilter(state);
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', setupFilter);
 </script>

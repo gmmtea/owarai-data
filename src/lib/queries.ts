@@ -180,14 +180,55 @@ export function listComediansAll(): { id: string; name: string; reading: string 
 }
 
 // 代表だけ（一覧用既定）
-export function listComediansCanonicalOnly(): { id: string; name: string; reading: string | null; kind: "unit" | "person" }[] {
+export type CoCanonicalRow = {
+  id: string;
+  name: string;
+  reading: string | null;
+  kind: "unit" | "person";
+  m1_rank_sort: number | null;
+  koc_rank_sort: number | null;
+};
+
+// 代表だけ（一覧用既定）
+export function listComediansCanonicalOnly(): CoCanonicalRow[] {
   return db().prepare(`
-    SELECT id, name, reading, kind
-    FROM comedians
-    WHERE canonical_id IS NULL
-      AND COALESCE(has_profile, 0) = 1
-    ORDER BY COALESCE(reading, name)
-  `).all();
+    SELECT
+      c.id,
+      c.name,
+      c.reading,
+      c.kind,
+      m1.best_rank_sort  AS m1_rank_sort,
+      koc.best_rank_sort AS koc_rank_sort
+    FROM comedians c
+    -- M-1 の最高成績
+    LEFT JOIN (
+      SELECT
+        fr.comedian_id,
+        MIN(fr.rank_sort) AS best_rank_sort
+      FROM final_results fr
+      JOIN editions e      ON e.id = fr.edition_id
+      JOIN competitions co ON co.id = e.competition_id
+      WHERE co.key = 'm1'
+      GROUP BY fr.comedian_id
+    ) AS m1
+      ON m1.comedian_id = c.id
+    -- KOC の最高成績
+    LEFT JOIN (
+      SELECT
+        fr.comedian_id,
+        MIN(fr.rank_sort) AS best_rank_sort
+      FROM final_results fr
+      JOIN editions e      ON e.id = fr.edition_id
+      JOIN competitions co ON co.id = e.competition_id
+      WHERE co.key = 'koc'
+      GROUP BY fr.comedian_id
+    ) AS koc
+      ON koc.comedian_id = c.id
+    WHERE
+      c.canonical_id IS NULL
+      AND COALESCE(c.has_profile, 0) = 1
+    ORDER BY COALESCE(c.reading, c.name)
+  `).all() as CoCanonicalRow[];
 }
 
 /* 芸人ページ：大会ごとに年の縦表（追加列の選定は大会年ごとに実データベース準拠） */
@@ -677,6 +718,8 @@ export type CoListItem = {
   name: string;
   reading: string | null;
   kind: 'person' | 'unit' | null;
+  m1_min_rank_sort: number | null;   // 例: 1, 2, 4, 50, 100, 500... / null
+  koc_min_rank_sort: number | null;
   has_profile?: 0 | 1;
 };
 
