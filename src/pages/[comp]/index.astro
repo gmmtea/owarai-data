@@ -21,13 +21,13 @@ const pickFinalRows = (table: any) =>
 const yearsAsc = listEditionYears(comp);      // 昇順
 const years = [...yearsAsc].sort((a,b)=>b-a); // 降順に並べ替え
 ---
-<Base title={`${compName} 年別結果`}>
+<Base title={`${compName} 歴代結果一覧`}>
   <nav class="breadcrumbs">
     <a href={base}>トップ</a><span class="sep">/</span>
     <span>{compName}</span>
   </nav>
 
-  <h1>{compName} 年別結果</h1>
+  <h1>{compName} 歴代結果一覧</h1>
 
   {years.length > 0 && (
     <nav class="year-toc" aria-label="年目次">
@@ -47,7 +47,7 @@ const years = [...yearsAsc].sort((a,b)=>b-a); // 降順に並べ替え
     return (
       <section>
         <h2 class="kv" id={year != null ? `y-${year}` : undefined}>
-          {label} {table ? <a class="muted" href={`${base}${comp}/${table.edition.year}`}>（単独ページ）</a> : null}
+          {table ? (<a href={`${base}${comp}/${table.edition.year}`}>{label}</a>) : label}
         </h2>
 
         {rows.length > 0 && (

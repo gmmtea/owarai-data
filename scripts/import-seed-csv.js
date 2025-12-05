@@ -470,6 +470,13 @@ db.transaction(() => {
       comedian_id  TEXT    NOT NULL REFERENCES comedians(id),
       rank         TEXT    NOT NULL,
       rank_sort    INTEGER,
+
+      -- 決勝進出歴
+      final_appearances      INTEGER,  -- 通算決勝出場回数
+      final_consecutive      INTEGER,  -- 連続出場数（途切れたら1にリセット）
+      final_gap_years        INTEGER,  -- 前回決勝からの年数（連続なら1、初進出はNULL）
+      final_appearance_label TEXT,     -- 表示用の文字列
+
       ${extraDDL || "-- no extra columns"}
       ${extraDDL ? "," : ""}
       UNIQUE (edition_id, comedian_id)
@@ -846,6 +853,101 @@ db.transaction(() => {
 
     insJudgeScore.run(ed.id, roundNo, co.id, seatNo, score);
   }
+
+  /* ---------- 決勝進出歴の集計（final_results に書き込み） ---------- */
+
+  // 「決勝」とみなす条件:
+  //   rank_sort <= 40 だけを対象にする（既に edition_used_columns で使っている閾値と同じ）
+  //
+  // 集計単位:
+  //   (comp_key, root_id) ごとに年をソートして、通算回数・連続数・年ぶりを計算する。
+
+  const finalRows = db.prepare(`
+    SELECT
+      fr.rowid                               AS rowid,
+      fr.edition_id                          AS edition_id,
+      e.year                                 AS year,
+      c.key                                  AS comp_key,
+      co.id                                  AS comedian_id,
+      COALESCE(co.canonical_id, co.id)       AS root_id
+    FROM final_results fr
+    JOIN editions     e  ON e.id  = fr.edition_id
+    JOIN competitions c  ON c.id  = e.competition_id
+    JOIN comedians    co ON co.id = fr.comedian_id
+    WHERE CAST(fr.rank_sort AS INTEGER) <= 40
+    ORDER BY comp_key, root_id, year
+  `).all();
+
+  // (comp_key, root_id) → 決勝出場行配列
+  const byKey = new Map(); // key: `${comp_key}||${root_id}`
+  for (const r of finalRows) {
+    const k = `${r.comp_key}||${r.root_id}`;
+    if (!byKey.has(k)) byKey.set(k, []);
+    byKey.get(k).push(r);
+  }
+
+  const updFinalHistory = db.prepare(`
+    UPDATE final_results
+    SET
+      final_appearances      = ?,
+      final_consecutive      = ?,
+      final_gap_years        = ?,
+      final_appearance_label = ?
+    WHERE rowid = ?
+  `);
+
+  for (const [key, rows] of byKey.entries()) {
+    // rows は comp_key, root_id ごとに year 昇順で並んでいる
+    let totalCount = 0;
+    let prevYear = null;
+    let prevConsecutive = 0;
+
+    for (const r of rows) {
+      totalCount += 1;
+
+      let gapYears = null;
+      let consecutive = 1;
+
+      if (prevYear != null) {
+        gapYears = r.year - prevYear;
+        if (gapYears === 1) {
+          // 連続出場継続
+          consecutive = prevConsecutive + 1;
+        } else {
+          // 連続が途切れたのでリセット
+          consecutive = 1;
+        }
+      }
+
+      let label;
+      if (totalCount === 1) {
+        // 初進出
+        label = "初進出";
+      } else if (gapYears === 1) {
+        // 連続出場
+        label = `${consecutive}年連続\n${totalCount}回目`;
+      } else if (gapYears != null && gapYears > 1) {
+        // 何年ぶり出場
+        label = `${gapYears}年ぶり\n${totalCount}回目`;
+      } else {
+        // 想定外パターンは即エラーにする
+        throw new Error(
+          `[final_appearance] 不整合: totalCount=${totalCount}, gapYears=${gapYears}, consecutive=${consecutive}`
+        );
+      }
+
+      updFinalHistory.run(
+        totalCount,
+        consecutive,
+        gapYears,
+        label,
+        r.rowid
+      );
+
+      prevYear = r.year;
+      prevConsecutive = consecutive;
+    }
+  }
 })();
 
 // --- ここからは“別フェーズ”：メタ表・使用列・ビュー（巻き戻しの影響を切り離す） ---
@@ -867,6 +969,9 @@ const baseCols2 = new Set([
   "id","edition_id","comedian_id",
   "rank","rank_sort",
   "comedian_note","comedian_number",
+  "final_appearances",
+  "final_consecutive",
+  "final_gap_years",
 ]);
 const infoCols2 = db.prepare(`PRAGMA table_info('final_results')`).all()
   .map(r => r.name)
@@ -875,6 +980,7 @@ const infoCols2 = db.prepare(`PRAGMA table_info('final_results')`).all()
 function autoMetaFor(key){
   const baseLabel = ({
     catchphrase:   "キャッチコピー",
+    final_appearance_label: "決勝進出歴",
     first_group:   "1本目ブロック名",
     first_order:   "1本目出順",
     first_result:  "1本目結果",
@@ -899,13 +1005,16 @@ function autoMetaFor(key){
                   : (key === "second_title") ? "second_movie"
                   : (key === "third_title")  ? "third_movie" : null;
   const pref     = ({
+    final_appearance_label: 6,
     catchphrase: 10,
-    // first_group はUIに出さないので順序は適当でOK
     first_order: 20, first_result: 21, first_title: 22,
     second_order:30, second_result:31, second_title:32,
     third_order: 40, third_result: 41, third_title: 42,
   }[key]) ?? null;
-  const multi    = key === "catchphrase" ? 1 : 0;
+  const multi    =
+    key === "catchphrase" ||
+    key === "final_appearance_label"
+      ? 1 : 0;
   return { label:baseLabel, pref, multi, colClass, isMovie, related };
 }
 
@@ -952,6 +1061,9 @@ const baseCols = new Set([
   "id","edition_id","comedian_id",
   "rank","rank_sort",
   "comedian_note","comedian_number",
+  "final_appearances",
+  "final_consecutive",
+  "final_gap_years",
 ]);
 const infoCols = db.prepare(`PRAGMA table_info('final_results')`).all()
   .map(r => r.name)
