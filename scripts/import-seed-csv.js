@@ -474,7 +474,7 @@ db.transaction(() => {
       -- 決勝進出歴
       final_appearances      INTEGER,  -- 通算決勝出場回数
       final_consecutive      INTEGER,  -- 連続出場数（途切れたら1にリセット）
-      final_gap_years        INTEGER,  -- 前回決勝からの年数（連続なら1、初進出はNULL）
+      final_gap_seq          INTEGER,  -- 前回決勝からの大会差（連続なら1、初進出はNULL）
       final_appearance_label TEXT,     -- 表示用の文字列
 
       ${extraDDL || "-- no extra columns"}
@@ -866,7 +866,7 @@ db.transaction(() => {
     SELECT
       fr.rowid                               AS rowid,
       fr.edition_id                          AS edition_id,
-      e.year                                 AS year,
+      e.seq_no                               AS seq_no,     -- 大会通し番号
       c.key                                  AS comp_key,
       co.id                                  AS comedian_id,
       COALESCE(co.canonical_id, co.id)       AS root_id
@@ -875,7 +875,7 @@ db.transaction(() => {
     JOIN competitions c  ON c.id  = e.competition_id
     JOIN comedians    co ON co.id = fr.comedian_id
     WHERE CAST(fr.rank_sort AS INTEGER) <= 40
-    ORDER BY comp_key, root_id, year
+    ORDER BY comp_key, root_id, e.seq_no
   `).all();
 
   // (comp_key, root_id) → 決勝出場行配列
@@ -891,31 +891,42 @@ db.transaction(() => {
     SET
       final_appearances      = ?,
       final_consecutive      = ?,
-      final_gap_years        = ?,
+      final_gap_seq          = ?,
       final_appearance_label = ?
     WHERE rowid = ?
   `);
 
   for (const [key, rows] of byKey.entries()) {
-    // rows は comp_key, root_id ごとに year 昇順で並んでいる
+    // rows は comp_key, root_id ごとに seq_no 昇順で並んでいる
     let totalCount = 0;
-    let prevYear = null;
+    let prevSeq = null;
     let prevConsecutive = 0;
 
     for (const r of rows) {
+      const seq = r.seq_no;
+      if (seq == null) {
+        throw new Error(`[final_appearance] seq_no が NULL の決勝行があります (edition_id=${r.edition_id})`);
+      }
+
       totalCount += 1;
 
-      let gapYears = null;
+      let gapSeq = null;
       let consecutive = 1;
 
-      if (prevYear != null) {
-        gapYears = r.year - prevYear;
-        if (gapYears === 1) {
+      if (prevSeq != null) {
+        gapSeq = seq - prevSeq;  // 前回大会からの差（1なら連続、2なら「2大会ぶり」）
+
+        if (gapSeq === 1) {
           // 連続出場継続
           consecutive = prevConsecutive + 1;
-        } else {
+        } else if (gapSeq > 1) {
           // 連続が途切れたのでリセット
           consecutive = 1;
+        } else {
+          // 差が 0以下 はおかしいので即エラー
+          throw new Error(
+            `[final_appearance] seq_no の並びが不正です: prevSeq=${prevSeq}, currentSeq=${seq}`
+          );
         }
       }
 
@@ -923,28 +934,28 @@ db.transaction(() => {
       if (totalCount === 1) {
         // 初進出
         label = "初進出";
-      } else if (gapYears === 1) {
+      } else if (gapSeq === 1) {
         // 連続出場
-        label = `${consecutive}年連続\n${totalCount}回目`;
-      } else if (gapYears != null && gapYears > 1) {
-        // 何年ぶり出場
-        label = `${gapYears}年ぶり\n${totalCount}回目`;
+        label = `${consecutive}大会連続\n${totalCount}回目`;
+      } else if (gapSeq != null && gapSeq > 1) {
+        // 何大会ぶりの出場
+        label = `${gapSeq}大会ぶり\n${totalCount}回目`;
       } else {
         // 想定外パターンは即エラーにする
         throw new Error(
-          `[final_appearance] 不整合: totalCount=${totalCount}, gapYears=${gapYears}, consecutive=${consecutive}`
+          `[final_appearance] 不整合: totalCount=${totalCount}, gapSeq=${gapSeq}, consecutive=${consecutive}`
         );
       }
 
       updFinalHistory.run(
         totalCount,
         consecutive,
-        gapYears,
+        gapSeq,
         label,
         r.rowid
       );
 
-      prevYear = r.year;
+      prevSeq = seq;
       prevConsecutive = consecutive;
     }
   }
@@ -971,7 +982,7 @@ const baseCols2 = new Set([
   "comedian_note","comedian_number",
   "final_appearances",
   "final_consecutive",
-  "final_gap_years",
+  "final_gap_seq",
 ]);
 const infoCols2 = db.prepare(`PRAGMA table_info('final_results')`).all()
   .map(r => r.name)
@@ -1063,7 +1074,7 @@ const baseCols = new Set([
   "comedian_note","comedian_number",
   "final_appearances",
   "final_consecutive",
-  "final_gap_years",
+  "final_gap_seq",
 ]);
 const infoCols = db.prepare(`PRAGMA table_info('final_results')`).all()
   .map(r => r.name)
