@@ -2,6 +2,7 @@
 import Base from "../../layouts/Base.astro";
 import { listEditionParams, getEditionTable, getJudgeScoreTable, listEditionYears } from "../../lib/queries";
 import JudgeScoresTable from "../../components/JudgeScoresTable.astro";
+import FinalResultsTable from "../../components/FinalResultsTable.astro";
 
 const base = import.meta.env.BASE_URL;
 
@@ -160,69 +161,7 @@ const nextYear = i >= 0 && i < years.length-1 ? years[i+1] : null; // 翌年
   </div>
 
   {finalRows.length > 0 && (
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th class="sticky-1 col-name">芸人</th>
-            <th class="sticky-2 col-rank">順位</th>
-            {cols.map((c:any) => <th class={c.col_class ?? ""}>{c.label ?? c.key}</th>)}
-          </tr>
-        </thead>
-        <tbody>
-          {finalRows.length === 0 && (
-            <tr><td colspan={2 + cols.length}><span class="muted">決勝出場のデータはありません。</span></td></tr>
-          )}
-          {finalRows.map(r => (
-            <tr>
-              <td class="sticky-1 col-name">
-                <a href={`${base}co/${r.link_id}`}>{r.name}</a>
-              </td>
-              <td class="sticky-2 col-rank">
-                <span class="badge" data-ranksort={r.rank_sort}>{r.rank}</span>
-              </td>
-              {cols.map((c:any) => {
-                const v = r[c.key];
-                const cls  = [c.col_class ?? "", c.is_multiline === 1 ? "multiline" : ""].filter(Boolean).join(" ");
-
-                // first_order を「A-2番」形式で表示（group が無ければ「2番」）
-                if (c.key === "first_order") {
-                  const ord = v;
-                  const grp = (r as any)["first_group"]; // 行データにあれば利用
-                  const text = (ord == null || String(ord).trim() === "")
-                    ? ""
-                    : `${grp ? grp + "-" : ""}${ord}番`;
-                  return <td class={cls}>{text}</td>;
-                }
-
-                const text = v == null ? "" : String(v);
-                if (c.related_key) {
-                  const url = r[c.related_key] ? String(r[c.related_key]) : "";
-                  const isYouTube = !!url && /(?:^https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\//i.test(url);
-                  return (
-                    <td class={cls}>
-                      {text}
-                      {url && " "}
-                      {url && (
-                        <a class={`video-link ${isYouTube ? "video-youtube" : ""}`}
-                          href={url} target="_blank" rel="noopener noreferrer"
-                          aria-label={isYouTube ? "YouTubeで見る" : "動画を見る"}>
-                          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                            <path fill="currentColor"
-                              d="M23.5 6.2a4 4 0 0 0-2.8-2.8C18.5 3 12 3 12 3S5.5 3 3.3 3.4A4 4 0 0 0 .5 6.2 41 41 0 0 0 0 12c0 2 .2 3.8.5 5.8a4 4 0 0 0 2.8 2.8C5.5 21 12 21 12 21s6.5 0 8.7-.4a4 4 0 0 0 2.8-2.8c.3-2 .5-3.8.5-5.8s-.2-3.8-.5-5.8ZM9.75 15.02V8.98L15.5 12l-5.75 3.02Z"/>
-                          </svg>
-                        </a>
-                      )}
-                    </td>
-                  );
-                }
-                return <td class={cls}>{text}</td>;
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <FinalResultsTable base={base} cols={cols} rows={finalRows} />
   )}
 
   {/** 1本目：ブロック分割があるなら分割表示、なければ従来どおり */}
