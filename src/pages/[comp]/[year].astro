@@ -4,6 +4,20 @@ import { listEditionParams, getEditionTable, getJudgeScoreTable, listEditionYear
 import JudgeScoresTable from "../../components/JudgeScoresTable.astro";
 import FinalResultsTable from "../../components/FinalResultsTable.astro";
 
+type ResultColumnRole =
+  | "default"
+  | "firstOrder"
+  | "withVideo";
+
+type Column = {
+  key: string;
+  label?: string | null;
+  col_class?: string | null;
+  is_multiline?: number | null;
+  related_key?: string | null;
+  role?: ResultColumnRole;
+};
+
 const base = import.meta.env.BASE_URL;
 
 export async function getStaticPaths() {
@@ -41,9 +55,6 @@ function formatJpDate(s?: string | null) {
 }
 
 const finalDateText = formatJpDate(edition.final_date);
-
-// 表示する列（DBメタ順）
-const cols = columns; // [{key,label,col_class,is_multiline,related_key}, ...]
 
 const round1 = getJudgeScoreTable(comp, y, 1);
 const round2 = getJudgeScoreTable(comp, y, 2);
@@ -136,6 +147,23 @@ const years = listEditionYears(comp);                // 昇順
 const i = years.indexOf(y);
 const prevYear = i > 0 ? years[i-1] : null;          // 前年（存在すれば）
 const nextYear = i >= 0 && i < years.length-1 ? years[i+1] : null; // 翌年
+
+// 列 enrichment
+function enrichColumns(rawCols: any[]): Column[] {
+  return rawCols.map((c: any) => {
+    let role: ResultColumnRole | undefined;
+
+    if (c.key === "first_order") {
+      role = "firstOrder";
+    } else if (c.related_key) {
+      role = "withVideo";
+    }
+
+    return { ...c, role };
+  });
+}
+
+const cols: Column[] = enrichColumns(columns);
 ---
 <Base title={`${pageTitle} 結果`}>
   <nav class="breadcrumbs">
@@ -160,9 +188,9 @@ const nextYear = i >= 0 && i < years.length-1 ? years[i+1] : null; // 翌年
     </div>
   </div>
 
-  {finalRows.length > 0 && (
-    <FinalResultsTable base={base} cols={cols} rows={finalRows} />
-  )}
+{finalRows.length > 0 && (
+  <FinalResultsTable base={base} cols={cols} rows={finalRows} />
+)}
 
   {/** 1本目：ブロック分割があるなら分割表示、なければ従来どおり */}
   {round1 && (round1.groups && round1.groups.length > 0 ? (

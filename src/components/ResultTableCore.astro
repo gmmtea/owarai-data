@@ -1,10 +1,16 @@
 ---
+type ResultColumnRole =
+  | "default"     // 通常の値
+  | "firstOrder"  // 出順（A-2番など）
+  | "withVideo";  // テキスト＋動画リンク
+
 type Column = {
   key: string;
   label?: string | null;
   col_class?: string | null;
   is_multiline?: number | null;
   related_key?: string | null;
+  role?: ResultColumnRole;
 };
 
 type Row = {
@@ -20,6 +26,18 @@ const { base, cols, rows } = Astro.props as {
   cols: Column[];
   rows: Row[];
 };
+
+/**
+ * 後方互換のため:
+ * - role が明示されていればそれを使う
+ * - 無ければ key / related_key から推定
+ */
+function resolveRole(col: Column): ResultColumnRole {
+  if (col.role) return col.role;
+  if (col.key === "first_order") return "firstOrder";
+  if (col.related_key) return "withVideo";
+  return "default";
+}
 ---
 
 <tbody>
@@ -41,8 +59,10 @@ const { base, cols, rows } = Astro.props as {
           .filter(Boolean)
           .join(" ");
 
-        // first_order を「A-2番」形式で表示（group が無ければ「2番」）
-        if (c.key === "first_order") {
+        const role = resolveRole(c);
+
+        // 出順: 「A-2番」形式で表示（group が無ければ「2番」）
+        if (role === "firstOrder") {
           const ord = v;
           const grp = (r as any)["first_group"];
           const text =
@@ -54,9 +74,9 @@ const { base, cols, rows } = Astro.props as {
 
         const text = v == null ? "" : String(v);
 
-        // related_key がある列は動画リンク付き
-        if (c.related_key) {
-          const urlRaw = (r as any)[c.related_key];
+        // 動画リンク付き列
+        if (role === "withVideo") {
+          const urlRaw = (r as any)[c.related_key ?? ""];
           const url = urlRaw ? String(urlRaw) : "";
           const isYouTube =
             !!url &&
@@ -89,6 +109,7 @@ const { base, cols, rows } = Astro.props as {
           );
         }
 
+        // 通常列
         return <td class={cls}>{text}</td>;
       })}
     </tr>

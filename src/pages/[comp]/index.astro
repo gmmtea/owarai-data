@@ -3,6 +3,20 @@ import Base from "../../layouts/Base.astro";
 import { listEditionParams, getCompetitionYearTables, listEditionYears } from "../../lib/queries";
 import FinalResultsTable from "../../components/FinalResultsTable.astro";
 
+type ResultColumnRole =
+  | "default"
+  | "firstOrder"
+  | "withVideo";
+
+type Column = {
+  key: string;
+  label?: string | null;
+  col_class?: string | null;
+  is_multiline?: number | null;
+  related_key?: string | null;
+  role?: ResultColumnRole;
+};
+
 const base = import.meta.env.BASE_URL;
 
 export async function getStaticPaths() {
@@ -21,6 +35,21 @@ const pickFinalRows = (table: any) =>
   (table?.rows ?? []).filter((r: any) => Number(r.rank_sort) <= 40);
 const yearsAsc = listEditionYears(comp);      // 昇順
 const years = [...yearsAsc].sort((a,b)=>b-a); // 降順に並べ替え
+
+// 列に role を付与するヘルパ
+function enrichColumns(rawCols: any[]): Column[] {
+  return rawCols.map((c: any) => {
+    let role: ResultColumnRole | undefined;
+
+    if (c.key === "first_order") {
+      role = "firstOrder";
+    } else if (c.related_key) {
+      role = "withVideo";
+    }
+
+    return { ...c, role };
+  });
+}
 ---
 <Base title={`${compName} 歴代結果一覧`}>
   <nav class="breadcrumbs">
@@ -43,7 +72,7 @@ const years = [...yearsAsc].sort((a,b)=>b-a); // 降順に並べ替え
 
   {list.map(({ year, short_label, table }) => {
     const label = short_label ?? (year != null ? `${year}` : "（回次未設定）");
-    const cols = table ? table.columns : [];
+    const cols: Column[] = table ? enrichColumns(table.columns) : [];
     const rows = table ? pickFinalRows(table) : [];
     return (
       <section>

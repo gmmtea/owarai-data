@@ -1,12 +1,18 @@
 ---
 import ResultTableCore from "./ResultTableCore.astro";
 
+type ResultColumnRole =
+  | "default"
+  | "firstOrder"
+  | "withVideo";
+
 type Column = {
   key: string;
   label?: string | null;
   col_class?: string | null;
   is_multiline?: number | null;
   related_key?: string | null;
+  role?: ResultColumnRole;
 };
 
 type Row = {
