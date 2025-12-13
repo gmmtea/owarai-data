@@ -138,7 +138,7 @@ function previewFor(file, record){
     case "final_results.csv":
       return pick(record, ["comp","year","comedian_name","comedian_number","rank"]);
     case "judge_scores.csv":
-      return pick(record, ["comp","year","round_no","seat_no","comedian_name","comedian_number","score"]);
+      return pick(record, ["comp","year","round_no","match_no","seat_no","comedian_name","comedian_number","score"]);
     default:
       return record;
   }
@@ -175,7 +175,7 @@ const comediansCsv       = readCsv("comedians.csv");        // name,note,reading
 const results            = readCsv("final_results.csv");    // comp,year,comedian_name,rank,...(動的列)
 const judgesCsv          = readCsv("judges.csv");           // name
 const editionJudgesCsv   = readCsv("edition_judges.csv");   // comp,year,seat_no,judge_name
-const judgeScoresCsv     = readCsv("judge_scores.csv");     // comp,year,round_no,comedian_name,comedian_note,seat_no,score
+const judgeScoresCsv     = readCsv("judge_scores.csv");     // comp,year,round_no,match_no,comedian_name,comedian_note,seat_no,score
 const membershipsCsv     = readCsv("memberships.csv");      // unit_name,unit_note,person_name,person_note
 
 /* ============================= final_results の動的列定義 ============================= */
@@ -504,10 +504,11 @@ db.transaction(() => {
     CREATE TABLE judge_scores (
       edition_id  INTEGER NOT NULL REFERENCES editions(id),
       round_no    INTEGER NOT NULL,
+      match_no    INTEGER NOT NULL DEFAULT 0,  -- 対戦番号（分割無しの場合は 0 を使用）
       comedian_id TEXT    NOT NULL REFERENCES comedians(id),
       seat_no     INTEGER NOT NULL,
       score       REAL    NOT NULL,
-      PRIMARY KEY (edition_id, round_no, comedian_id, seat_no)
+      PRIMARY KEY (edition_id, round_no, match_no, comedian_id, seat_no)
     );
     CREATE INDEX idx_js_edition_round ON judge_scores(edition_id, round_no);
   `);
@@ -571,9 +572,9 @@ db.transaction(() => {
     ON CONFLICT(edition_id, seat_no) DO UPDATE SET judge_id=excluded.judge_id
   `);
   const insJudgeScore = db.prepare(`
-    INSERT INTO judge_scores(edition_id, round_no, comedian_id, seat_no, score)
-    VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT(edition_id, round_no, comedian_id, seat_no) DO UPDATE SET score=excluded.score
+    INSERT INTO judge_scores(edition_id, round_no, match_no, comedian_id, seat_no, score)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(edition_id, round_no, match_no, comedian_id, seat_no) DO UPDATE SET score=excluded.score
   `);
 
   /* ---------- データ投入（順に依存関係を満たす） ---------- */
@@ -837,6 +838,11 @@ db.transaction(() => {
     if (!ed) throw new Error(`edition not found: ${r.comp} ${r.year}`);
 
     const roundNo = Number(r.round_no);
+    // match_no は空なら 0（非分割ラウンド）に寄せる
+    const matchNoRaw = r.match_no;
+    let matchNo = normIntOrNullLoose(matchNoRaw);
+    if (matchNo == null) matchNo = 0;
+
     const seatNo  = Number(r.seat_no);
     if (!Number.isFinite(roundNo) || !Number.isFinite(seatNo)) continue;
 
@@ -851,7 +857,7 @@ db.transaction(() => {
     const score = Number(scoreRaw);
     if (!Number.isFinite(score)) continue;
 
-    insJudgeScore.run(ed.id, roundNo, co.id, seatNo, score);
+    insJudgeScore.run(ed.id, roundNo, matchNo, co.id, seatNo, score);
   }
 
   /* ---------- 決勝進出歴の集計（final_results に書き込み） ---------- */

@@ -612,6 +612,7 @@ export function getJudgeScoreTable(comp: string, year: number, round_no: number)
         ELSE NULL
       END AS order_no,
       CASE ? WHEN 1 THEN fr.first_group ELSE NULL END AS group_name,
+      js.match_no,
       js.seat_no,
       js.score
     FROM final_results fr
@@ -638,6 +639,7 @@ export function getJudgeScoreTable(comp: string, year: number, round_no: number)
     rank_sort:number;
     order_no:number|null;
     group_name:string|null;
+    match_no:number|null;
     seat_no:number|null;
     score:number|null;
   }>;
@@ -649,13 +651,15 @@ export function getJudgeScoreTable(comp: string, year: number, round_no: number)
     rank_sort:number;
     order_no:number|null;
     group_name:string|null;
+    match_no:number|null;
     bySeat: Record<number, number|null>;
     total:number|null
   };
 
   const byId = new Map<string, Row>();
   for (const r of rows) {
-    let row = byId.get(r.comedian_id);
+    const key = `${r.comedian_id}::${r.match_no ?? 0}`;
+    let row = byId.get(key);
     if (!row) {
       row = {
         comedian_id:r.comedian_id,
@@ -664,9 +668,10 @@ export function getJudgeScoreTable(comp: string, year: number, round_no: number)
         rank_sort:r.rank_sort,
         order_no:r.order_no,
         group_name:r.group_name ?? null,
+        match_no:r.match_no ?? null,
         bySeat:{}, total:null
       };
-      byId.set(r.comedian_id, row);
+      byId.set(key, row);
     }
     if (r.seat_no != null) row.bySeat[r.seat_no] = r.score;
   }

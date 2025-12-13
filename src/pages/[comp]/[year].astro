@@ -188,32 +188,83 @@ const cols: Column[] = enrichColumns(columns);
     </div>
   </div>
 
-{finalRows.length > 0 && (
-  <FinalResultsTable base={base} cols={cols} rows={finalRows} />
-)}
+  {finalRows.length > 0 && (
+    <FinalResultsTable base={base} cols={cols} rows={finalRows} />
+  )}
 
-  {/** 1本目：ブロック分割があるなら分割表示、なければ従来どおり */}
-  {round1 && (round1.groups && round1.groups.length > 0 ? (
-    <>
-      {round1.groups.map((g:any) => (
-        <JudgeScoresTable
-          base={base}
-          title={`1本目 ${mode1 === "vote" ? "得票" : "得点"}詳細（${g.label}ブロック）`}
-          table={{ seats: round1.seats, rows: g.rows }}
-          mode={mode1}
-          {...(mode1 === "score" ? { scale: sharedScale } : {})}
-        />
-      ))}
-    </>
-  ) : (
-    <JudgeScoresTable
-      base={base}
-      title={`1本目 ${mode1 === "vote" ? "得票" : "得点"}詳細`}
-      table={round1}
-      mode={mode1}
-      {...(mode1 === "score" ? { scale: sharedScale } : {})}
-    />
-  ))}
+  {/** 1本目：ブロック分割があるなら分割表示、なければ従来どおり。
+      さらに、行に match_no が入っている場合は「ブロック内で試合ごと」にテーブルを分割する。 */}
+  {round1 && (() => {
+    // まず「groups があるかどうか」で分岐
+    if (round1.groups && round1.groups.length > 0) {
+      return (
+        <>
+          {round1.groups.map((g: any) => {
+            const rows: any[] = g.rows ?? [];
+
+            // match_no を1つでも持っているか
+            const hasAnyMatchNo = rows.some((r) => r.match_no != null);
+            // 「全行が match_no を持っている」場合だけ試合ごと分割する
+            const allHaveMatchNo = hasAnyMatchNo && rows.every((r) => r.match_no != null);
+
+            // ブロック単位で1表だけ
+            if (!allHaveMatchNo) {
+              return (
+                <JudgeScoresTable
+                  base={base}
+                  title={`1本目 ${mode1 === "vote" ? "得票" : "得点"}詳細（${g.label}ブロック）`}
+                  table={{ seats: round1.seats, rows }}
+                  mode={mode1}
+                  {...(mode1 === "score" ? { scale: sharedScale } : {})}
+                />
+              );
+            }
+
+            // ブロック内で match_no ごとにテーブルを分割
+            const buckets: { [matchNo: number]: any[] } = {};
+
+            for (const r of rows) {
+              const m = Number(r.match_no);
+              if (!Number.isFinite(m)) continue; // 数値でなければ無視
+              if (!buckets[m]) {
+                buckets[m] = [];
+              }
+              buckets[m].push(r);
+            }
+
+            const matchNos = Object.keys(buckets)
+              .map((s) => Number(s))
+              .sort((a, b) => a - b);
+
+            return (
+              <>
+                {matchNos.map((mno) => (
+                  <JudgeScoresTable
+                    base={base}
+                    title={`1本目 ${mode1 === "vote" ? "得票" : "得点"}詳細（${g.label}ブロック 第${mno}試合）`}
+                    table={{ seats: round1.seats, rows: buckets[mno] }}
+                    mode={mode1}
+                    {...(mode1 === "score" ? { scale: sharedScale } : {})}
+                  />
+                ))}
+              </>
+            );
+          })}
+        </>
+      );
+    }
+
+    // groups が無いケース：これまで通り 1テーブルのみ
+    return (
+      <JudgeScoresTable
+        base={base}
+        title={`1本目 ${mode1 === "vote" ? "得票" : "得点"}詳細`}
+        table={round1}
+        mode={mode1}
+        {...(mode1 === "score" ? { scale: sharedScale } : {})}
+      />
+    );
+  })()}
 
   {/** 2本目：通常通り */}
   <JudgeScoresTable

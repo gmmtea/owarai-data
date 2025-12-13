@@ -8,6 +8,7 @@ type Row  = {
   bySeat: Record<number, number|null>;
   total: number|null;
   order_no: number | null;
+  match_no?: number | null;
 };
 type Scale = {
   bySeat: Record<number, { mid:number; half:number }>;
