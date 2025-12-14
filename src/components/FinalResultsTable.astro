@@ -1,10 +1,13 @@
 ---
 import ResultTableCore from "./ResultTableCore.astro";
 
+type SortType = "text" | "number";
+
 type ResultColumnRole =
   | "default"
   | "firstOrder"
-  | "withVideo";
+  | "withVideo"
+  | "alias";
 
 type Column = {
   key: string;
@@ -13,6 +16,9 @@ type Column = {
   is_multiline?: number | null;
   related_key?: string | null;
   role?: ResultColumnRole;
+  sortable?: boolean;
+  sort_type?: SortType;
+  sort_key?: string | null;
 };
 
 type Row = {
@@ -20,6 +26,7 @@ type Row = {
   name: string;
   rank: string | number;
   rank_sort: number;
+  reading?: string | null;
   [key: string]: any;
 };
 
@@ -28,20 +35,188 @@ const { base, cols, rows } = Astro.props as {
   cols: Column[];
   rows: Row[];
 };
+
+// 「数値扱いしたい key」を列定義に書かなくても良いように、暫定のマップを用意
+const NUMERIC_KEYS = new Set<string>([
+  "year",
+  "rank",
+  "rank_sort",
+  "first_order",
+  "final_appearances",
+  "final_consecutive",
+  "final_gap_years",
+  "total",
+  "score",
+  "first_score",
+  "second_score",
+  "third_score",
+]);
+
+function isSortableColumn(c: Column): boolean {
+  // 明示的に false が指定されていたらソート不可
+  if (c.sortable === false) return false;
+
+  // 名義・キャッチコピーは仕様上ソート対象外
+  if (c.role === "alias") return false;
+  if (c.key === "catchphrase") return false;
+  if (c.key === "alias_label") return false;
+  if (c.key === "first_title") return false;
+  if (c.key === "second_title") return false;
+  if (c.key === "third_title") return false;
+
+  // それ以外はソート可能（必要になったら個別に sortable: false を付ければよい）
+  return true;
+}
+
+function getSortType(c: Column): SortType {
+  if (c.sort_type) return c.sort_type;
+  if (NUMERIC_KEYS.has(c.key)) return "number";
+  return "text";
+}
 ---
 
 <div class="table-wrap">
-  <table>
+  <table class="result-table" data-sort-table="results">
     <thead>
       <tr>
-        <th class="sticky-1 col-name">芸人</th>
-        <th class="sticky-2 col-rank">順位</th>
-        {cols.map((c) => (
-          <th class={c.col_class ?? ""}>{c.label ?? c.key}</th>
-        ))}
+        {/* 芸人名列: 読み（あれば）でソートするテキスト列 */}
+        <th
+          class="sticky-1 col-name"
+          data-sortable="text"
+          data-key="name"
+        >
+          芸人
+        </th>
+
+        {/* 順位列: rank_sort を使う数値列 */}
+        <th
+          class="sticky-2 col-rank"
+          data-sortable="number"
+          data-key="rank"
+        >
+          順位
+        </th>
+
+        {/* 残りの列は定義に応じてソート可否・種別を決定 */}
+        {cols.map((c) => {
+          const sortable = isSortableColumn(c);
+          const sortType = sortable ? getSortType(c) : null;
+          return (
+            <th
+              class={c.col_class ?? ""}
+              data-key={c.key}
+              data-sortable={sortType ?? undefined}
+            >
+              {c.label ?? c.key}
+            </th>
+          );
+        })}
       </tr>
     </thead>
 
     <ResultTableCore base={base} cols={cols} rows={rows} />
   </table>
 </div>
+
+<script is:inline>
+  (() => {
+    const tables = document.querySelectorAll('table[data-sort-table="results"]');
+    tables.forEach((table) => {
+      const thead = table.tHead;
+      const tbody = table.tBodies && table.tBodies[0];
+      if (!thead || !tbody) return;
+
+      // data-sortable を持つヘッダだけがソート対象
+      const headers = Array.from(
+        thead.querySelectorAll("th[data-sortable]")
+      );
+      if (!headers.length) return;
+
+      let activeIndex = -1;
+      let direction = 1; // 1: 昇順, -1: 降順
+
+      function getSortType(th) {
+        const t = th.getAttribute("data-sortable");
+        return t === "number" || t === "text" ? t : null;
+      }
+
+      function clearAriaSort() {
+        headers.forEach((h) => h.removeAttribute("aria-sort"));
+      }
+
+      function compareRows(a, b, colIndex, sortType) {
+        const ac = a.children[colIndex];
+        const bc = b.children[colIndex];
+        if (!ac || !bc) return 0;
+
+        if (sortType === "number") {
+          const av = Number(ac.getAttribute("data-value-num") || "");
+          const bv = Number(bc.getAttribute("data-value-num") || "");
+          const aEmpty = Number.isNaN(av);
+          const bEmpty = Number.isNaN(bv);
+          if (aEmpty && bEmpty) return 0;
+          if (aEmpty) return 1;  // 空は後ろ
+          if (bEmpty) return -1;
+          return av - bv;        // 基本は昇順
+        }
+
+        const at = (
+          ac.getAttribute("data-value-text") ||
+          ac.textContent ||
+          ""
+        ).trim();
+        const bt = (
+          bc.getAttribute("data-value-text") ||
+          bc.textContent ||
+          ""
+        ).trim();
+
+        if (!at && !bt) return 0;
+        if (!at) return 1;
+        if (!bt) return -1;
+
+        // 日本語＋数字混じりもそれなりに自然な並びになるように
+        return at.localeCompare(bt, "ja", {
+          numeric: true,
+          sensitivity: "base",
+        });
+      }
+
+      headers.forEach((th) => {
+        const sortType = getSortType(th);
+        if (!sortType) return;
+
+        th.style.cursor = "pointer";
+
+        const colIndex = Array.prototype.indexOf.call(
+          th.parentElement.children,
+          th
+        );
+
+        th.addEventListener("click", () => {
+          if (activeIndex === colIndex) {
+            // 同じ列を再クリックしたら昇順⇔降順をトグル
+            direction = -direction;
+          } else {
+            activeIndex = colIndex;
+            // 数値列は降順スタート、文字列列は昇順スタート
+            direction = sortType === "number" ? -1 : 1;
+          }
+
+          const rows = Array.from(tbody.rows);
+          rows.sort((a, b) => compareRows(a, b, colIndex, sortType));
+          if (direction === -1) {
+            rows.reverse();
+          }
+          rows.forEach((r) => tbody.appendChild(r));
+
+          clearAriaSort();
+          th.setAttribute(
+            "aria-sort",
+            direction === 1 ? "ascending" : "descending"
+          );
+        });
+      });
+    });
+  })();
+</script>

@@ -1,6 +1,8 @@
 ---
 import ResultDataCells from "./ResultDataCells.astro";
 
+type SortType = "text" | "number";
+
 type ResultColumnRole =
   | "default"
   | "firstOrder"
@@ -14,6 +16,9 @@ type Column = {
   is_multiline?: number | null;
   related_key?: string | null;
   role?: ResultColumnRole;
+  sortable?: boolean;
+  sort_type?: SortType;
+  sort_key?: string | null;
 };
 
 type Row = {
@@ -21,6 +26,7 @@ type Row = {
   name: string;
   rank: string | number;
   rank_sort: number;
+  reading?: string | null;
   [key: string]: any;
 };
 
@@ -34,10 +40,22 @@ const { base, cols, rows } = Astro.props as {
 <tbody>
   {rows.map((r) => (
     <tr>
-      <td class="sticky-1 col-name">
+      {/* 芸人名: 読みがあればそちらでソート、なければ name */}
+      <td
+        class="sticky-1 col-name"
+        data-key="name"
+        data-value-text={(r as any).reading ?? r.name}
+      >
         <a href={`${base}co/${r.link_id}`}>{r.name}</a>
       </td>
-      <td class="sticky-2 col-rank">
+
+      {/* 順位: 並び替えでは rank_sort を使う */}
+      <td
+        class="sticky-2 col-rank"
+        data-key="rank"
+        data-value-num={String((r as any).rank_sort ?? "")}
+        data-value-text={String(r.rank)}
+      >
         <span class="badge" data-ranksort={r.rank_sort}>{r.rank}</span>
       </td>
 

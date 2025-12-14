@@ -1,4 +1,6 @@
 ---
+type SortType = "text" | "number";
+
 type ResultColumnRole =
   | "default"
   | "firstOrder"
@@ -12,6 +14,9 @@ type Column = {
   is_multiline?: number | null;
   related_key?: string | null;
   role?: ResultColumnRole;
+  sortable?: boolean;
+  sort_type?: SortType;
+  sort_key?: string | null;
 };
 
 const { base, cols, row } = Astro.props as {
@@ -34,7 +39,19 @@ function resolveRole(col: Column): ResultColumnRole {
 ---
 
 {cols.map((c) => {
-  const v = row[c.key];
+  const role = resolveRole(c);
+  const raw = row[c.key];
+
+  // ソート用の値（現時点では素直に raw ベース）
+  const sortText = raw == null ? "" : String(raw);
+  let numValue: number | null = null;
+  if (raw != null && raw !== "") {
+    const n = Number(raw);
+    if (!Number.isNaN(n)) {
+      numValue = n;
+    }
+  }
+
   const cls = [
     c.col_class ?? "",
     c.is_multiline === 1 ? "multiline" : "",
@@ -42,23 +59,40 @@ function resolveRole(col: Column): ResultColumnRole {
     .filter(Boolean)
     .join(" ");
 
-  const role = resolveRole(c);
+  // 共通で付ける data-* を準備
+  const baseAttrs: any = {
+    "data-key": c.key,
+    "data-value-text": sortText,
+  };
+  if (numValue !== null) {
+    baseAttrs["data-value-num"] = String(numValue);
+  }
 
   // 出順: 「A-2番」形式で表示（group が無ければ「2番」）
   if (role === "firstOrder") {
-    const ord = v;
+    const ord = raw;
     const grp = row["first_group"];
     const text =
       ord == null || String(ord).trim() === ""
         ? ""
         : `${grp ? grp + "-" : ""}${ord}番`;
-    return <td class={cls}>{text}</td>;
-  }
 
-  const text = v == null ? "" : String(v);
+    // 出順列については、ソート用テキストは「素の数値」に寄せる
+    const attrs: any = {
+      ...baseAttrs,
+      "data-value-text": ord == null ? "" : String(ord),
+    };
+
+    return (
+      <td class={cls} {...attrs}>
+        {text}
+      </td>
+    );
+  }
 
   // 動画リンク付き列
   if (role === "withVideo") {
+    const text = sortText;
     const urlRaw = c.related_key ? row[c.related_key] : undefined;
     const url = urlRaw ? String(urlRaw) : "";
     const isYouTube =
@@ -66,7 +100,7 @@ function resolveRole(col: Column): ResultColumnRole {
       /(?:^https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\//i.test(url);
 
     return (
-      <td class={cls}>
+      <td class={cls} {...baseAttrs}>
         {text}
         {url && " "}
         {url && (
@@ -89,6 +123,12 @@ function resolveRole(col: Column): ResultColumnRole {
     );
   }
 
-  // alias を含め、現時点では default と同じ表示（後でソート挙動など変える余地を残す）
-  return <td class={cls}>{text}</td>;
+  // default / alias は同じ表示
+  const text = sortText;
+
+  return (
+    <td class={cls} {...baseAttrs}>
+      {text}
+    </td>
+  );
 })}
