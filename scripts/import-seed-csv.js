@@ -1016,7 +1016,8 @@ function autoMetaFor(key){
     /_order$/.test(key)  ? "col-order"  :
     /_result$/.test(key) ? "col-result" :
     /_title$/.test(key)  ? "col-title"  :
-    key === "catchphrase"? "col-catch"  : null;
+    key === "catchphrase"? "col-catch"  :
+    key === "final_appearance_label"? "col-appearance" : null;
   const isMovie  = /_movie$/.test(key) ? 1 : 0;
   const related  = (key === "first_title")  ? "first_movie"
                   : (key === "second_title") ? "second_movie"

@@ -141,11 +141,22 @@ const uid = Math.random().toString(36).slice(2);
               <td class="col-order" data-value-num={r.order_no ?? ""}>{r.order_no ?? ""}</td>
 
               {mode === "score" ? (
-                <td class="col-total heat" data-value-num={r.total ?? ""} style={(r.total!=null)? `background:${colorForTotal(r.total)}` : undefined}>
+                // ★スコアモード時はこれまで通りヒートマップ＆数値
+                <td
+                  class="col-total heat"
+                  data-value-num={r.total ?? ""}
+                  style={r.total != null ? `background:${colorForTotal(r.total)}` : undefined}
+                >
                   {r.total ?? ""}
                 </td>
               ) : (
-                <td class="col-total votes" data-value-num={r.total ?? ""}>{renderVotes(r.total)}</td>
+                // ★投票モード時も合計は「数字」で表示
+                <td
+                  class="col-total votes"
+                  data-value-num={r.total ?? ""}
+                >
+                  {r.total ?? ""}
+                </td>
               )}
 
               {table!.seats.map((s) => {
@@ -153,13 +164,21 @@ const uid = Math.random().toString(36).slice(2);
                 if (mode === "score") {
                   const bg = colorFor(v, s.seat_no);
                   return (
-                    <td class="col-score heat" data-value-num={v ?? ""} style={bg ? `background:${bg}` : undefined}>
+                    <td
+                      class="col-score heat"
+                      data-value-num={v ?? ""}
+                      style={bg ? `background:${bg}` : undefined}
+                    >
                       {v ?? ""}
                     </td>
                   );
                 } else {
+                  // ★ここは従来通り●表示
                   return (
-                    <td class="col-score votes" data-value-num={v ?? ""}>
+                    <td
+                      class="col-score votes"
+                      data-value-num={v ?? ""}
+                    >
                       {renderVotes(v)}
                     </td>
                   );

@@ -229,6 +229,7 @@ tbody tr:hover{ background:#fff8f1 }
   padding-right: 6px;
 }
 .col-name   { min-width: 160px }
+.col-appearance { min-width: 80px }
 .col-catch  { min-width: 200px }
 .col-comp   { min-width: 160px }
 .col-order  { min-width: 60px }
@@ -449,6 +450,7 @@ table.judge-scores .col-name .truncate{
   table{ min-width: 0; }                     /* 560pxの下限を撤廃 */
   thead th{ white-space: normal; }           /* 見出しも折返し許可 */
   .col-name{  min-width: 120px; }            /* 列下限を緩める */
+  .col-appearance { min-width: 120px }
   .col-catch{ min-width: 140px; }
   .col-title{ min-width: 120px; }
 
