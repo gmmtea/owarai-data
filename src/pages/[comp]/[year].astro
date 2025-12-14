@@ -192,40 +192,44 @@ const cols: Column[] = enrichColumns(columns);
     <FinalResultsTable base={base} cols={cols} rows={finalRows} />
   )}
 
-  {/** 1本目：ブロック分割があるなら分割表示、なければ従来どおり。
-      さらに、行に match_no が入っている場合は「ブロック内で試合ごと」にテーブルを分割する。 */}
+  {/** 1本目：ブロック分割があるならブロック→試合ごとに見出しを分けて表示 */}
   {round1 && (() => {
-    // まず「groups があるかどうか」で分岐
+    const baseTitle = `1本目 ${mode1 === "vote" ? "得票" : "得点"}詳細`;
+
+    // groups が存在する場合
     if (round1.groups && round1.groups.length > 0) {
       return (
-        <>
+        <section>
+          {/* 1本目全体の大見出し */}
+          <h2>{baseTitle}</h2>
+
           {round1.groups.map((g: any) => {
             const rows: any[] = g.rows ?? [];
 
-            // match_no を1つでも持っているか
             const hasAnyMatchNo = rows.some((r) => r.match_no != null);
-            // 「全行が match_no を持っている」場合だけ試合ごと分割する
             const allHaveMatchNo = hasAnyMatchNo && rows.every((r) => r.match_no != null);
 
-            // ブロック単位で1表だけ
+            // --- ① 試合番号が揃っていないブロック → ブロック1表だけ（h3 + テーブル） ---
             if (!allHaveMatchNo) {
               return (
-                <JudgeScoresTable
-                  base={base}
-                  title={`1本目 ${mode1 === "vote" ? "得票" : "得点"}詳細（${g.label}ブロック）`}
-                  table={{ seats: round1.seats, rows }}
-                  mode={mode1}
-                  {...(mode1 === "score" ? { scale: sharedScale } : {})}
-                />
+                <section>
+                  <h3>{`${g.label}ブロック`}</h3>
+                  <JudgeScoresTable
+                    base={base}
+                    table={{ seats: round1.seats, rows }}
+                    mode={mode1}
+                    {...(mode1 === "score" ? { scale: sharedScale } : {})}
+                  />
+                </section>
               );
             }
 
-            // ブロック内で match_no ごとにテーブルを分割
+            // --- ② 試合番号が揃っているブロック → 試合ごとに h4 + テーブル ---
             const buckets: { [matchNo: number]: any[] } = {};
 
             for (const r of rows) {
               const m = Number(r.match_no);
-              if (!Number.isFinite(m)) continue; // 数値でなければ無視
+              if (!Number.isFinite(m)) continue;
               if (!buckets[m]) {
                 buckets[m] = [];
               }
@@ -237,52 +241,67 @@ const cols: Column[] = enrichColumns(columns);
               .sort((a, b) => a - b);
 
             return (
-              <>
+              <section>
+                {/* ブロック名を中くらいの見出しに */}
+                <h3>{`${g.label}ブロック`}</h3>
+
                 {matchNos.map((mno) => (
-                  <JudgeScoresTable
-                    base={base}
-                    title={`1本目 ${mode1 === "vote" ? "得票" : "得点"}詳細（${g.label}ブロック 第${mno}試合）`}
-                    table={{ seats: round1.seats, rows: buckets[mno] }}
-                    mode={mode1}
-                    {...(mode1 === "score" ? { scale: sharedScale } : {})}
-                  />
+                  <section>
+                    {/* 試合番号を小さい見出しに */}
+                    <h4>{`第${mno}試合`}</h4>
+                    <JudgeScoresTable
+                      base={base}
+                      table={{ seats: round1.seats, rows: buckets[mno] }}
+                      mode={mode1}
+                      {...(mode1 === "score" ? { scale: sharedScale } : {})}
+                    />
+                  </section>
                 ))}
-              </>
+              </section>
             );
           })}
-        </>
+        </section>
       );
     }
 
-    // groups が無いケース：これまで通り 1テーブルのみ
+    // groups が無いケース：これまで通り 1テーブルのみ（h2 + テーブル）
     return (
-      <JudgeScoresTable
-        base={base}
-        title={`1本目 ${mode1 === "vote" ? "得票" : "得点"}詳細`}
-        table={round1}
-        mode={mode1}
-        {...(mode1 === "score" ? { scale: sharedScale } : {})}
-      />
+      <section>
+        <h2>{baseTitle}</h2>
+        <JudgeScoresTable
+          base={base}
+          table={round1}
+          mode={mode1}
+          {...(mode1 === "score" ? { scale: sharedScale } : {})}
+        />
+      </section>
     );
   })()}
 
-  {/** 2本目：通常通り */}
-  <JudgeScoresTable
-    base={base}
-    title={`2本目 ${mode2 === "vote" ? "得票" : "得点"}詳細`}
-    table={round2}
-    mode={mode2}
-    {...(mode2 === "score" ? { scale: sharedScale } : {})}
-  />
+  {round2 && round2.rows && round2.rows.length > 0 && (
+    <section>
+      <h2>{`2本目 ${mode2 === "vote" ? "得票" : "得点"}詳細`}</h2>
+      <JudgeScoresTable
+        base={base}
+        table={round2}
+        mode={mode2}
+        {...(mode2 === "score" ? { scale: sharedScale } : {})}
+      />
+    </section>
+  )}
 
-  {/** 3本目：通常通り */}
-  <JudgeScoresTable
-    base={base}
-    title={`3本目 ${mode3 === "vote" ? "得票" : "得点"}詳細`}
-    table={round3}
-    mode={mode3}
-    {...(mode3 === "score" ? { scale: sharedScale } : {})}
-  />
+  {/** 3本目：通常通り（見出しはここで出す） */}
+  {round3 && round3.rows && round3.rows.length > 0 && (
+    <section>
+      <h2>{`3本目 ${mode3 === "vote" ? "得票" : "得点"}詳細`}</h2>
+      <JudgeScoresTable
+        base={base}
+        table={round3}
+        mode={mode3}
+        {...(mode3 === "score" ? { scale: sharedScale } : {})}
+      />
+    </section>
+  )}
 
   {/* 準決勝進出者一覧 */}
   {semifinals.length > 0 && (() => {

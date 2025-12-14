@@ -16,9 +16,8 @@ type Scale = {
   total?: { mid:number; half:number }; // ← 合計列の基準（両ラウンド共通）
 };
 
-const { base, title, table, scale, mode = "score" } = Astro.props as {
+const { base, table, scale, mode = "score" } = Astro.props as {
   base: string;
-  title: string;
   table: { seats: Seat[]; rows: Row[] } | null;
   scale?: Scale | null;
   mode?: "score" | "vote";
@@ -118,7 +117,6 @@ const uid = Math.random().toString(36).slice(2);
 ---
 {ok && (
   <>
-    <h2>{title}</h2>
     <div class="table-wrap tight" id={`judge-scores-${uid}`} data-judge-scores>
       <table class={`judge-scores ${mode === "vote" ? "is-vote" : "is-score"}`}>
         <thead>
