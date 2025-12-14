@@ -193,7 +193,7 @@ const cols: Column[] = enrichColumns(columns);
   )}
 
   {/** 1本目：ブロック分割があるならブロック→試合ごとに見出しを分けて表示 */}
-  {round1 && (() => {
+  {round1 && round1.rows && round1.rows.length > 0 && (() => {
     const baseTitle = `1本目 ${mode1 === "vote" ? "得票" : "得点"}詳細`;
 
     // groups が存在する場合
