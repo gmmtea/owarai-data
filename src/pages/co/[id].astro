@@ -10,6 +10,7 @@ import {
   getRelatedUnitsForUnit,
   getRelatedMembersForPerson
 } from "../../lib/queries";
+import ResultDataCells from "../../components/ResultDataCells.astro";
 
 const base = import.meta.env.BASE_URL;
 
@@ -137,6 +138,58 @@ const size = Astro.props.size ?? 16;
 const title = Astro.props.title ?? "M-1公式";
 const klass = Astro.props.class ?? "";
 // 色はCSS変数で上書き可能（サイトのトーンに合わせたい場合）
+
+type ResultColumnRole =
+  | "default"
+  | "firstOrder"
+  | "withVideo"
+  | "alias";
+
+type Column = {
+  key: string;
+  label?: string | null;
+  col_class?: string | null;
+  is_multiline?: number | null;
+  related_key?: string | null;
+  role?: ResultColumnRole;
+};
+
+// 共通: 列に role を付ける helper
+function enrichColumns(rawCols: any[], opts?: { withAlias?: boolean }): Column[] {
+  const cols: Column[] = rawCols.map((c: any) => {
+    let role: ResultColumnRole | undefined;
+
+    if (c.key === "first_order") {
+      role = "firstOrder";
+    } else if (c.related_key) {
+      role = "withVideo";
+    }
+
+    return { ...c, role };
+  });
+
+  if (opts?.withAlias) {
+    cols.push({
+      key: "alias_label",
+      label: "名義",
+      col_class: "col-alias",
+      role: "alias",
+    });
+  }
+
+  return cols;
+}
+
+// sections / yearBlocks に _cols を持たせた拡張版を作る
+const sectionsWithCols = sections.map((sec: any) => ({
+  ...sec,
+  _cols: enrichColumns(sec.columns, { withAlias: !!sec.showAlias }),
+}));
+
+const yearBlocksWithCols = yearBlocks.map((blk: any) => ({
+  ...blk,
+  _cols: enrichColumns(blk.columns, { withAlias: !!blk.showAlias }),
+}));
 ---
 
 <Base title={`${titleName} の記録`}>
@@ -236,7 +289,7 @@ const klass = Astro.props.class ?? "";
 
   <!-- 大会ごと表示 -->
   <div id="view-comp">
-    {sections.map((sec) => (
+    {sectionsWithCols.map((sec) => (
       <section>
         <h2>{sec.competition_name}</h2>
         <div class="table-wrap">
@@ -245,10 +298,9 @@ const klass = Astro.props.class ?? "";
               <tr>
                 <th class="sticky-1 col-year">回</th>
                 <th class="sticky-2 col-rank">順位</th>
-                {sec.columns.map((c:any) => (
+                {sec._cols.map((c: Column) => (
                   <th class={c.col_class ?? ""}>{c.label ?? c.key}</th>
                 ))}
-                {sec.showAlias && <th class="col-alias">名義</th>}
               </tr>
             </thead>
             <tbody>
@@ -267,34 +319,8 @@ const klass = Astro.props.class ?? "";
                     <td class="sticky-2 col-rank">
                       <span class="badge" data-ranksort={r.rank_sort}>{r.rank}</span>
                     </td>
-                    {sec.columns.map((c:any) => {
-                      const v = r[c.key];
-                      const text = v == null ? "" : String(v);
-                      const cls = [c.col_class ?? "", c.is_multiline === 1 ? "multiline" : ""].filter(Boolean).join(" ");
-                      if (c.key === "first_order") {
-                        const ord = v; const grp = r["first_group"];
-                        const t = (ord == null || String(ord).trim() === "") ? "" : `${grp ? grp + "-" : ""}${ord}番`;
-                        return <td class={cls}>{t}</td>;
-                      }
-                      if (c.related_key) {
-                        const url = r[c.related_key] ? String(r[c.related_key]) : "";
-                        const isYouTube = !!url && /(?:^https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\//i.test(url);
-                        return (
-                          <td class={cls}>
-                            {text}{url && " "}
-                            {url && (
-                              <a class={`video-link ${isYouTube ? "video-youtube" : ""}`} href={url} target="_blank" rel="noopener noreferrer" aria-label={isYouTube ? "YouTubeで見る" : "動画を見る"}>
-                                <svg viewBox="0 0 24 24" aria-hidden="true">
-                                  <path fill="currentColor" d="M23.5 6.2a4 4 0 0 0-2.8-2.8C18.5 3 12 3 12 3S5.5 3 3.3 3.4A4 4 0 0 0 .5 6.2 41 41 0 0 0 0 12c0 2 .2 3.8.5 5.8a4 4 0 0 0 2.8 2.8C5.5 21 12 21 12 21s6.5 0 8.7-.4a4 4 0 0 0 2.8-2.8c.3-2 .5-3.8.5-5.8s-.2-3.8-.5-5.8ZM9.75 15.02V8.98L15.5 12l-5.75 3.02Z"/>
-                                </svg>
-                              </a>
-                            )}
-                          </td>
-                        );
-                      }
-                      return <td class={cls}>{text}</td>;
-                    })}
-                    {sec.showAlias && <td class="col-alias">{r.alias_label}</td>}
+
+                    <ResultDataCells base={base} cols={sec._cols} row={r} />
                   </tr>
                 );
               })}
@@ -307,7 +333,7 @@ const klass = Astro.props.class ?? "";
 
   <!-- 年ごと表示（新規） -->
   <div id="view-year" hidden>
-    {yearBlocks.map((blk) => (
+    {yearBlocksWithCols.map((blk) => (
       <section>
         <h2>{blk.year != null ? `${blk.year}年` : "年不明"}</h2>
         <div class="table-wrap">
@@ -316,47 +342,20 @@ const klass = Astro.props.class ?? "";
               <tr>
                 <th class="sticky-1 col-comp">大会</th>
                 <th class="sticky-2 col-rank">順位</th>
-                {blk.columns.map((c:any) => (
+                {blk._cols.map((c: Column) => (
                   <th class={c.col_class ?? ""}>{c.label ?? c.key}</th>
                 ))}
-                {blk.showAlias && <th class="col-alias">名義</th>}
               </tr>
             </thead>
             <tbody>
-              {blk.rows.map((r:any) => (
+              {blk.rows.map((r: any) => (
                 <tr>
                   <td class="sticky-1 col-comp">
                     <a href={`${base}${r.comp}/${r.year}`}>{r.competition_name}</a>
                   </td>
                   <td class="sticky-2 col-rank"><span class="badge" data-ranksort={r.rank_sort}>{r.rank}</span></td>
-                  {blk.columns.map((c:any) => {
-                    const v = r[c.key];
-                    const text = v == null ? "" : String(v);
-                    const cls = [c.col_class ?? "", c.is_multiline === 1 ? "multiline" : ""].filter(Boolean).join(" ");
-                    if (c.key === "first_order") {
-                      const ord = v; const grp = r["first_group"];
-                      const t = (ord == null || String(ord).trim() === "") ? "" : `${grp ? grp + "-" : ""}${ord}番`;
-                      return <td class={cls}>{t}</td>;
-                    }
-                    if (c.related_key) {
-                      const url = r[c.related_key] ? String(r[c.related_key]) : "";
-                      const isYouTube = !!url && /(?:^https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\//i.test(url);
-                      return (
-                        <td class={cls}>
-                          {text}{url && " "}
-                          {url && (
-                            <a class={`video-link ${isYouTube ? "video-youtube" : ""}`} href={url} target="_blank" rel="noopener noreferrer" aria-label={isYouTube ? "YouTubeで見る" : "動画を見る"}>
-                              <svg viewBox="0 0 24 24" aria-hidden="true">
-                                <path fill="currentColor" d="M23.5 6.2a4 4 0 0 0-2.8-2.8C18.5 3 12 3 12 3S5.5 3 3.3 3.4A4 4 0 0 0 .5 6.2 41 41 0 0 0 0 12c0 2 .2 3.8.5 5.8a4 4 0 0 0 2.8 2.8C5.5 21 12 21 12 21s6.5 0 8.7-.4a4 4 0 0 0 2.8-2.8c.3-2 .5-3.8.5-5.8s-.2-3.8-.5-5.8ZM9.75 15.02V8.98L15.5 12l-5.75 3.02Z"/>
-                              </svg>
-                            </a>
-                          )}
-                        </td>
-                      );
-                    }
-                    return <td class={cls}>{text}</td>;
-                  })}
-                  {blk.showAlias && <td class="col-alias">{r.alias_label}</td>}
+
+                  <ResultDataCells base={base} cols={blk._cols} row={r} />
                 </tr>
               ))}
             </tbody>
