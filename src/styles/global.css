@@ -453,6 +453,8 @@ table.judge-scores .col-name .truncate{
   .col-appearance { min-width: 120px }
   .col-catch{ min-width: 140px; }
   .col-title{ min-width: 120px; }
+  .col-order{ min-width: 80px; }
+  .col-result{ min-width: 80px; }
 
   table.judge-scores .col-score,
   table.judge-scores .col-total{
