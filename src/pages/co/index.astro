@@ -93,17 +93,19 @@ const enriched = raw.map(r => {
     kind: r.kind as "unit" | "person",
     m1_rank_sort: r.m1_rank_sort,
     koc_rank_sort: r.koc_rank_sort,
+    r1_rank_sort: r.r1_rank_sort
   };
 });
 
 // 2) 行→サブキーの2段バケット
 type Item = {
-   id: string;
-   name: string;
-   reading: string;
-   kind: "unit" | "person";
-   m1_rank_sort: number | null;   // 例: 1, 2, 4, 50, 100, 500... / null
-   koc_rank_sort: number | null;
+  id: string;
+  name: string;
+  reading: string;
+  kind: "unit" | "person";
+  m1_rank_sort: number | null;   // 例: 1, 2, 4, 50, 100, 500... / null
+  koc_rank_sort: number | null;
+  r1_rank_sort: number | null;
 };
 type RowBuckets = Record<string, Record<string, Item[]>>;
 const rowBuckets: RowBuckets = {};
@@ -129,7 +131,8 @@ for (const r of enriched) {
       reading: rd,
       kind: r.kind,
       m1_rank_sort: r.m1_rank_sort,
-      koc_rank_sort: r.koc_rank_sort
+      koc_rank_sort: r.koc_rank_sort,
+      r1_rank_sort: r.r1_rank_sort
     });
     continue;
   }
@@ -150,7 +153,8 @@ for (const r of enriched) {
     reading: rd,
     kind: r.kind,
     m1_rank_sort: r.m1_rank_sort,
-    koc_rank_sort: r.koc_rank_sort
+    koc_rank_sort: r.koc_rank_sort,
+    r1_rank_sort: r.r1_rank_sort
   });
 }
 
@@ -219,6 +223,17 @@ others.sort((a, b) => {
         <button type="button" class="kind-tab" data-koc="win">優勝</button>
       </div>
     </div>
+
+    <div class="co-filter-row">
+      <!-- R-1 成績タブ -->
+      <div id="r1-tabs" class="kind-tabs result-tabs" data-r1="any">
+        <span class="result-label">R-1 進出経験:</span>
+        <button type="button" class="kind-tab is-active" data-r1="any">指定なし</button>
+        <button type="button" class="kind-tab" data-r1="semi">準決勝</button>
+        <button type="button" class="kind-tab" data-r1="final">決勝</button>
+        <button type="button" class="kind-tab" data-r1="win">優勝</button>
+      </div>
+    </div>
   </div>
 
   {/* 表示：サブキー1文字を太字＋コロンで先頭に置く */}
@@ -238,6 +253,7 @@ others.sort((a, b) => {
                   data-kind={it.kind}
                   data-m1-rank={it.m1_rank_sort ?? ""}
                   data-koc-rank={it.koc_rank_sort ?? ""}
+                  data-r1-rank={it.r1_rank_sort ?? ""}
                 >
                   {i > 0 && " / "}
                   <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
@@ -263,6 +279,7 @@ others.sort((a, b) => {
             data-kind={it.kind}
             data-m1-rank={it.m1_rank_sort ?? ""}
             data-koc-rank={it.koc_rank_sort ?? ""}
+            data-r1-rank={it.r1_rank_sort ?? ""}
           >
             {i > 0 && " / "}
             <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
@@ -378,24 +395,27 @@ others.sort((a, b) => {
   }
 
   function readStateFromUrlAndStorage() {
-    const def = { kind: 'all', m1: 'any', koc: 'any' };
+    const def = { kind: 'all', m1: 'any', koc: 'any', r1: 'any' };
 
     try {
       const url = new URL(location.href);
       const kindQ = url.searchParams.get('kind');
       const m1Q   = url.searchParams.get('m1');
       const kocQ  = url.searchParams.get('koc');
+      const r1Q   = url.searchParams.get('r1');
 
       const fromUrl = {
         kind: KIND_ALLOWED.includes(kindQ || '') ? kindQ : null,
         m1:   RESULT_ALLOWED.includes(m1Q || '') ? m1Q   : null,
         koc:  RESULT_ALLOWED.includes(kocQ || '') ? kocQ : null,
+        r1:   RESULT_ALLOWED.includes(r1Q || '') ? r1Q   : null,
       };
-      if (fromUrl.kind || fromUrl.m1 || fromUrl.koc) {
+      if (fromUrl.kind || fromUrl.m1 || fromUrl.koc || fromUrl.r1) {
         return {
           kind: fromUrl.kind || def.kind,
           m1:   fromUrl.m1   || def.m1,
           koc:  fromUrl.koc  || def.koc,
+          r1:   fromUrl.r1   || def.r1,
         };
       }
     } catch (_) {}
@@ -407,7 +427,8 @@ others.sort((a, b) => {
         const kind = KIND_ALLOWED.includes(parsed.kind) ? parsed.kind : def.kind;
         const m1   = RESULT_ALLOWED.includes(parsed.m1) ? parsed.m1   : def.m1;
         const koc  = RESULT_ALLOWED.includes(parsed.koc) ? parsed.koc : def.koc;
-        return { kind, m1, koc };
+        const r1   = RESULT_ALLOWED.includes(parsed.r1) ? parsed.r1 : def.r1;
+        return { kind, m1, koc, r1 };
       }
     } catch (_) {}
 
@@ -420,6 +441,7 @@ others.sort((a, b) => {
       url.searchParams.set('kind', state.kind);
       url.searchParams.set('m1',   state.m1);
       url.searchParams.set('koc',  state.koc);
+      url.searchParams.set('r1',   state.r1);
       history.replaceState(null, '', url);
     } catch (_) {}
 
@@ -461,12 +483,14 @@ others.sort((a, b) => {
       const itemKind = el.getAttribute('data-kind') || 'unit';
       const m1Rank   = parseRankSort(el.getAttribute('data-m1-rank'));
       const kocRank  = parseRankSort(el.getAttribute('data-koc-rank'));
+      const r1Rank   = parseRankSort(el.getAttribute('data-r1-rank'));
 
       const okKind = matchKind(itemKind, state.kind);
       const okM1   = matchResultFilter(m1Rank, state.m1);
       const okKoc  = matchResultFilter(kocRank, state.koc);
+      const okR1   = matchResultFilter(r1Rank, state.r1);
 
-      const show = okKind && okM1 && okKoc;
+      const show = okKind && okM1 && okKoc && okR1;
       if (show) {
         el.removeAttribute('hidden');
       } else {
@@ -491,13 +515,15 @@ others.sort((a, b) => {
     setActiveTab(document.getElementById('kind-tabs'), 'kind', state.kind);
     setActiveTab(document.getElementById('m1-tabs'),   'm1',   state.m1);
     setActiveTab(document.getElementById('koc-tabs'),  'koc',  state.koc);
+    setActiveTab(document.getElementById('r1-tabs'),   'r1',   state.r1);
   }
 
   function setupFilter() {
     const kindWrap = document.getElementById('kind-tabs');
     const m1Wrap   = document.getElementById('m1-tabs');
     const kocWrap  = document.getElementById('koc-tabs');
-    if (!kindWrap || !m1Wrap || !kocWrap) return;
+    const r1Wrap   = document.getElementById('r1-tabs');
+    if (!kindWrap || !m1Wrap || !kocWrap || !r1Wrap) return;
 
     let state = readStateFromUrlAndStorage();
     syncTabs(state);
@@ -531,6 +557,13 @@ others.sort((a, b) => {
     wireTabs(kocWrap, 'koc', (v) => {
       state = { ...state, koc: v };
       setActiveTab(kocWrap, 'koc', v);
+      writeStateToUrlAndStorage(state);
+      applyFilter(state);
+    });
+
+    wireTabs(r1Wrap, 'r1', (v) => {
+      state = { ...state, r1: v };
+      setActiveTab(r1Wrap, 'r1', v);
       writeStateToUrlAndStorage(state);
       applyFilter(state);
     });

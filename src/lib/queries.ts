@@ -187,6 +187,7 @@ export type CoCanonicalRow = {
   kind: "unit" | "person";
   m1_rank_sort: number | null;
   koc_rank_sort: number | null;
+  r1_rank_sort: number | null;
 };
 
 // 代表だけ（一覧用既定）
@@ -198,7 +199,8 @@ export function listComediansCanonicalOnly(): CoCanonicalRow[] {
       c.reading,
       c.kind,
       m1.best_rank_sort  AS m1_rank_sort,
-      koc.best_rank_sort AS koc_rank_sort
+      koc.best_rank_sort AS koc_rank_sort,
+      r1.best_rank_sort  AS r1_rank_sort
     FROM comedians c
     -- M-1 の最高成績
     LEFT JOIN (
@@ -224,6 +226,18 @@ export function listComediansCanonicalOnly(): CoCanonicalRow[] {
       GROUP BY fr.comedian_id
     ) AS koc
       ON koc.comedian_id = c.id
+    -- R-1 の最高成績
+    LEFT JOIN (
+      SELECT
+        fr.comedian_id,
+        MIN(fr.rank_sort) AS best_rank_sort
+      FROM final_results fr
+      JOIN editions e      ON e.id = fr.edition_id
+      JOIN competitions co ON co.id = e.competition_id
+      WHERE co.key = 'r1'
+      GROUP BY fr.comedian_id
+    ) AS r1
+      ON r1.comedian_id = c.id
     WHERE
       c.canonical_id IS NULL
       AND COALESCE(c.has_profile, 0) = 1
@@ -725,6 +739,7 @@ export type CoListItem = {
   kind: 'person' | 'unit' | null;
   m1_min_rank_sort: number | null;   // 例: 1, 2, 4, 50, 100, 500... / null
   koc_min_rank_sort: number | null;
+  r1_min_rank_sort: number | null;
   has_profile?: 0 | 1;
 };
 
