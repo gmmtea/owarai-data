@@ -115,6 +115,10 @@ export function getEditionTable(comp: string, year: number) {
       fr.rank_sort,
       co.id   AS comedian_id,
       co.name AS name,           -- 表示は当時名
+      co.kind         AS co_kind,
+      co.birth_year   AS co_birth_year,
+      co.birth_month  AS co_birth_month,
+      co.birth_day    AS co_birth_day,
       co.reading,
       COALESCE(co.canonical_id, co.id) AS link_id,  -- ← リンク先は代表
       CASE
@@ -143,6 +147,216 @@ export function getEditionTable(comp: string, year: number) {
     },
     columns,  // ← ラベル/クラス/改行フラグ込み
     rows
+  };
+}
+
+// lib/queries.ts の末尾付近などに追加
+
+type EditionBirthRow = {
+  person_id: string;
+  person_name: string;
+  person_reading: string | null;
+  person_has_profile: boolean;
+  birth_year: number | null;
+  birth_month: number | null;
+  birth_day: number | null;
+  birth_date_raw: string | null;
+  unit_id: string | null;
+  unit_name: string | null;
+  unit_has_profile: boolean;
+};
+
+type EditionFormationRow = {
+  unit_id: string;
+  unit_name: string;
+  unit_reading: string | null;
+  unit_has_profile: boolean;
+  birth_year: number | null;
+  birth_month: number | null;
+  birth_day: number | null;
+  birth_date_raw: string | null;
+};
+
+type EditionBirthAndFormationTables = {
+  birthdayRows: EditionBirthRow[];
+  formationRows: EditionFormationRow[];
+  hasUnitFinalist: boolean;
+};
+
+function normalizeDateSortKey(
+  y: number | null,
+  m: number | null,
+  d: number | null
+): [number, number, number, number] {
+  const has = y !== null || m !== null || d !== null;
+  return [
+    has ? 0 : 1,         // 日付ありを先に
+    y ?? 9999,
+    m ?? 99,
+    d ?? 99,
+  ];
+}
+
+/**
+ * 決勝進出者の「誕生日テーブル」「結成日テーブル」用データを返す
+ */
+export function getEditionBirthAndFormationTables(
+  compKey: string,
+  year: number
+): EditionBirthAndFormationTables {
+  // 対象 edition を取得（エラーは getEditionTable と同様の扱いに合わせてください）
+  const editionRow = db()
+    .prepare(
+      `
+      SELECT e.id AS edition_id
+      FROM editions e
+      JOIN competitions c ON c.id = e.competition_id
+      WHERE c.key = ? AND e.year = ?
+      LIMIT 1
+    `
+    )
+    .get(compKey, year) as { edition_id?: number } | undefined;
+
+  if (!editionRow || !editionRow.edition_id) {
+    return { birthdayRows: [], formationRows: [], hasUnitFinalist: false };
+  }
+  const editionId = editionRow.edition_id;
+
+  // 1) 決勝進出ユニット（結成日テーブル用）
+  const formationRaw = db()
+    .prepare(
+      `
+      SELECT DISTINCT
+        root.id            AS unit_id,
+        root.name          AS unit_name,
+        root.reading       AS unit_reading,
+        root.has_profile   AS unit_has_profile,
+        root.birth_year    AS birth_year,
+        root.birth_month   AS birth_month,
+        root.birth_day     AS birth_day,
+        root.birth_date    AS birth_date_raw
+      FROM final_results fr
+      JOIN comedians co_final
+        ON co_final.id = fr.comedian_id
+      JOIN comedians root
+        ON root.id = COALESCE(co_final.canonical_id, co_final.id)
+      WHERE fr.edition_id = ?
+        AND CAST(fr.rank_sort AS INTEGER) <= 40
+        AND root.kind = 'unit'
+    `
+    )
+    .all(editionId) as EditionFormationRow[];
+
+  // 2) 決勝進出ユニットのメンバー（誕生日テーブル用）
+  const memberBirthRaw = db()
+    .prepare(
+      `
+      SELECT DISTINCT
+        p_root.id          AS person_id,
+        p_root.name        AS person_name,
+        p_root.reading     AS person_reading,
+        p_root.has_profile AS person_has_profile,
+        p_root.birth_year  AS birth_year,
+        p_root.birth_month AS birth_month,
+        p_root.birth_day   AS birth_day,
+        p_root.birth_date  AS birth_date_raw,
+        u_root.id          AS unit_id,
+        u_root.name        AS unit_name,
+        u_root.has_profile AS unit_has_profile
+      FROM final_results fr
+      JOIN comedians u_final
+        ON u_final.id = fr.comedian_id
+      JOIN comedians u_root
+        ON u_root.id = COALESCE(u_final.canonical_id, u_final.id)
+      JOIN memberships m
+        ON m.unit_id = u_root.id
+      JOIN comedians p_root
+        ON p_root.id = m.person_id
+      WHERE fr.edition_id = ?
+        AND CAST(fr.rank_sort AS INTEGER) <= 40
+        AND u_root.kind = 'unit'
+        AND p_root.kind = 'person'
+    `
+    )
+    .all(editionId) as EditionBirthRow[];
+
+  // 3) 決勝進出しているピン（ユニットに属さない分も含める）
+  const pinBirthRaw = db()
+    .prepare(
+      `
+      SELECT DISTINCT
+        p_root.id          AS person_id,
+        p_root.name        AS person_name,
+        p_root.reading     AS person_reading,
+        p_root.has_profile AS person_has_profile,
+        p_root.birth_year  AS birth_year,
+        p_root.birth_month AS birth_month,
+        p_root.birth_day   AS birth_day,
+        p_root.birth_date  AS birth_date_raw
+      FROM final_results fr
+      JOIN comedians p_final
+        ON p_final.id = fr.comedian_id
+      JOIN comedians p_root
+        ON p_root.id = COALESCE(p_final.canonical_id, p_final.id)
+      WHERE fr.edition_id = ?
+        AND CAST(fr.rank_sort AS INTEGER) <= 40
+        AND p_root.kind = 'person'
+    `
+    )
+    .all(editionId) as Omit<
+    EditionBirthRow,
+    "unit_id" | "unit_name" | "unit_has_profile"
+  >[];
+
+  // memberBirthRaw の person_id を集合化（ユニット所属者）
+  const memberPersonIds = new Set<string>(
+    memberBirthRaw.map((r) => r.person_id)
+  );
+
+  // ピンで決勝に出ているが、上の「ユニット所属者リスト」に入っていない人だけ追加
+  const pinOnlyRows: EditionBirthRow[] = pinBirthRaw
+    .filter((r) => !memberPersonIds.has(r.person_id))
+    .map((r) => ({
+      ...r,
+      unit_id: null,
+      unit_name: null,
+      unit_has_profile: false,
+    }));
+
+  // 誕生日テーブル用の行を結合
+  const birthdayRows: EditionBirthRow[] = [...memberBirthRaw, ...pinOnlyRows];
+
+  // ソート
+  birthdayRows.sort((a, b) => {
+    const ka = normalizeDateSortKey(a.birth_year, a.birth_month, a.birth_day);
+    const kb = normalizeDateSortKey(b.birth_year, b.birth_month, b.birth_day);
+    const cmpKey =
+      ka[0] - kb[0] || ka[1] - kb[1] || ka[2] - kb[2] || ka[3] - kb[3];
+    if (cmpKey !== 0) return cmpKey;
+
+    const aName = a.person_reading ?? a.person_name;
+    const bName = b.person_reading ?? b.person_name;
+    return String(aName).localeCompare(String(bName), "ja");
+  });
+
+  formationRaw.sort((a, b) => {
+    const ka = normalizeDateSortKey(a.birth_year, a.birth_month, a.birth_day);
+    const kb = normalizeDateSortKey(b.birth_year, b.birth_month, b.birth_day);
+    const cmpKey =
+      ka[0] - kb[0] || ka[1] - kb[1] || ka[2] - kb[2] || ka[3] - kb[3];
+    if (cmpKey !== 0) return cmpKey;
+
+    const aName = a.unit_reading ?? a.unit_name;
+    const bName = b.unit_reading ?? b.unit_name;
+    return String(aName).localeCompare(String(bName), "ja");
+  });
+
+  const hasUnitFinalist = formationRaw.length > 0;
+
+  return {
+    birthdayRows,
+    formationRows: formationRaw,
+    hasUnitFinalist,
   };
 }
 

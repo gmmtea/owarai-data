@@ -120,6 +120,62 @@ function normalizeKind(raw) {
   return null; // 不明はNULLで取り込む（後から補完可）
 }
 
+/**
+ * birth_date のパース
+ *
+ * 入力例:
+ *  - "1973年12月01日"
+ *  - "1973年12月1日"
+ *  - "1973年"
+ *  - "7月7日"
+ *  - "7月"
+ *
+ * すべて無い／形式不明なら year/month/day は null のまま。
+ */
+function parseBirthDate(raw) {
+  let year = null;
+  let month = null;
+  let day = null;
+
+  if (raw == null) {
+    return { year, month, day };
+  }
+
+  const s = String(raw).trim();
+  if (!s) return { year, month, day };
+
+  // 「年」「月」「日」がそれぞれあってもなくてもよい形式
+  const m = s.match(/^(?:(\d{4})年)?\s*(?:(\d{1,2})月)?\s*(?:(\d{1,2})日)?$/);
+
+  if (!m) {
+    console.warn(
+      `[warn] birth_date 形式が想定外です: "${s}" → year/month/day は NULL にします`
+    );
+    return { year, month, day };
+  }
+
+  if (m[1]) year = Number(m[1]);
+  if (m[2]) month = Number(m[2]);
+  if (m[3]) day = Number(m[3]);
+
+  // 範囲チェック（おかしければ null に落とす）
+  if (month != null && (month < 1 || month > 12)) {
+    console.warn(
+      `[warn] birth_date 月が 1〜12 の範囲外です: "${s}" → month=null にします`
+    );
+    month = null;
+  }
+  if (day != null && (day < 1 || day > 31)) {
+    console.warn(
+      `[warn] birth_date 日が 1〜31 の範囲外です: "${s}" → day=null にします`
+    );
+    day = null;
+  }
+
+  return { year, month, day };
+}
+
+
 /* ============================= エラー収集ユーティリティ ============================= */
 const errors = [];
 function pushErr(file, line, code, message, record) {
@@ -441,7 +497,10 @@ db.transaction(() => {
       note        TEXT,                                    -- 自由記述（ユニークには関与しない）
       reading     TEXT,                                    -- ひらがな
       kind        TEXT CHECK (kind IN ('person','unit')),  -- NULL許容
-      birth_date  TEXT,                                    -- 個人 or ユニット（結成年） 'YYYY-MM-DD'
+      birth_date  TEXT,                                    -- 個人 or ユニット（結成年） CSV文字列そのまま（"1973年12月1日" 等）
+      birth_year    INTEGER,                               -- 上記から抽出した年（なければNULL）
+      birth_month   INTEGER,                               -- 月
+      birth_day     INTEGER,                               -- 日
       m1_url      TEXT,                                    -- 公式: https://www.m-1gp.com/combi/xxxxx.html
       canonical_id TEXT REFERENCES comedians(id),
       has_profile INTEGER NOT NULL DEFAULT 0,
@@ -543,14 +602,29 @@ db.transaction(() => {
     SELECT c.id, @year, @title, @seq, @date, @label FROM competitions c WHERE c.key=@comp
   `);
   const insCo = db.prepare(`
-    INSERT INTO comedians (id, name, number, note, reading, kind, birth_date, m1_url)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO comedians (
+      id,
+      name,
+      number,
+      note,
+      reading,
+      kind,
+      birth_date,
+      birth_year,
+      birth_month,
+      birth_day,
+      m1_url
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(name, COALESCE(number, -1)) DO UPDATE SET
-      note        = excluded.note,
-      reading     = COALESCE(comedians.reading,     excluded.reading),
-      kind        = COALESCE(comedians.kind,        excluded.kind),
-      birth_date  = COALESCE(comedians.birth_date,  excluded.birth_date),
-      m1_url = COALESCE(comedians.m1_url, excluded.m1_url)
+      note         = excluded.note,
+      reading      = COALESCE(comedians.reading,      excluded.reading),
+      kind         = COALESCE(comedians.kind,         excluded.kind),
+      birth_date   = COALESCE(comedians.birth_date,   excluded.birth_date),
+      birth_year   = COALESCE(comedians.birth_year,   excluded.birth_year),
+      birth_month  = COALESCE(comedians.birth_month,  excluded.birth_month),
+      birth_day    = COALESCE(comedians.birth_day,    excluded.birth_day),
+      m1_url       = COALESCE(comedians.m1_url,       excluded.m1_url)
   `);
   const insMembership = db.prepare(`
     INSERT INTO memberships(unit_id, person_id)
@@ -598,16 +672,33 @@ db.transaction(() => {
 
   // comedians（初期マスタ）
   for (const r of comediansCsv) {
-    const name = trimOnly(r.name);
+    const name   = trimOnly(r.name);
     const number = normalizeIntOrNull(r.number);
     const note   = toNullable(r.note);
     const id     = makeId(name, number);
+
     const readingCsv = toNullable(trimOnly(r.reading));
-    const reading = readingCsv ?? (isKanaOnly(name) ? toHiragana(name) : null);
-    const kind = normalizeKind(r.kind);
-    const birthDate  = toNullable(r.birth_date);
+    const reading    = readingCsv ?? (isKanaOnly(name) ? toHiragana(name) : null);
+    const kind       = normalizeKind(r.kind);
+
+    const birthDateRaw = toNullable(r.birth_date);
+    const { year: birthYear, month: birthMonth, day: birthDay } = parseBirthDate(birthDateRaw);
+
     const m1Url = toNullable(r.m1_url);
-    insCo.run(id, name, number, note, reading ?? null, kind ?? null, birthDate ?? null, m1Url ?? null);
+
+    insCo.run(
+      id,
+      name,
+      number,
+      note,
+      reading ?? null,
+      kind ?? null,
+      birthDateRaw ?? null,  // 元の文字列そのまま保存
+      birthYear,
+      birthMonth,
+      birthDay,
+      m1Url ?? null
+    );
   }
 
   const selCoIdByNameNumber = db.prepare(`

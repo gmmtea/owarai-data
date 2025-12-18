@@ -1,6 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { listEditionParams, getEditionTable, getJudgeScoreTable, listEditionYears } from "../../lib/queries";
+import { listEditionParams, getEditionTable, getJudgeScoreTable, listEditionYears, getEditionBirthAndFormationTables } from "../../lib/queries";
 import JudgeScoresTable from "../../components/JudgeScoresTable.astro";
 import FinalResultsTable from "../../components/FinalResultsTable.astro";
 
@@ -164,6 +164,83 @@ function enrichColumns(rawCols: any[]): Column[] {
 }
 
 const cols: Column[] = enrichColumns(columns);
+
+// ★ 決勝進出者の誕生日・結成日テーブル用データ
+const {
+  birthdayRows,
+  formationRows,
+  hasUnitFinalist,
+} = getEditionBirthAndFormationTables(comp, y);
+
+// "YYYY年M月D日" 形式にする（年・月・日が欠けているケースも考慮）
+function formatBirthLikeDate(
+  by?: number | null,
+  bm?: number | null,
+  bd?: number | null
+): string {
+  const parts: string[] = [];
+  if (by != null) parts.push(`${by}年`);
+  if (bm != null) parts.push(`${bm}月`);
+  if (bd != null) parts.push(`${bd}日`);
+  return parts.length > 0 ? parts.join("") : "";
+}
+
+type Ymd = { y: number; m: number; d: number };
+
+// edition.final_date があればそれを基準日に、無ければその年の12/31を基準日にする
+function getReferenceYmd(): Ymd | null {
+  // final_date 優先
+  if (edition.final_date) {
+    const m = String(edition.final_date)
+      .trim()
+      .match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (m) {
+      return {
+        y: Number(m[1]),
+        m: Number(m[2]),
+        d: Number(m[3]),
+      };
+    }
+  }
+  // final_date が無い場合はその年末を基準にする（ざっくり）
+  if (edition.year) {
+    return { y: edition.year, m: 12, d: 31 };
+  }
+  return null;
+}
+
+const refYmd = getReferenceYmd();
+
+// birth_year/birth_month/birth_day から refYmd 時点での経過年数を計算
+function calcElapsedYears(
+  by?: number | null,
+  bm?: number | null,
+  bd?: number | null
+): number | null {
+  if (!refYmd) return null;
+  if (by == null) return null;
+
+  let years = refYmd.y - by;
+
+  // 月日が両方ある場合だけ「誕生日（結成日）を迎えたか」で±1調整
+  if (bm != null && bd != null) {
+    if (refYmd.m < bm || (refYmd.m === bm && refYmd.d < bd)) {
+      years -= 1;
+    }
+  }
+  if (years < 0) return null;
+  return years;
+}
+
+function formatAge(age?: number | null): string {
+  if (age == null) return "";
+  return `${age}歳`;
+}
+
+function formatFormationYears(years?: number | null): string {
+  if (years == null) return "";
+  return `${years}年目`;
+}
 ---
 <Base title={`${pageTitle} 結果`}>
   <nav class="breadcrumbs">
@@ -300,6 +377,116 @@ const cols: Column[] = enrichColumns(columns);
         mode={mode3}
         {...(mode3 === "score" ? { scale: sharedScale } : {})}
       />
+    </section>
+  )}
+
+  {birthdayRows.length > 0 && (
+    <section class="section-birth">
+      <h2>決勝進出者の年齢</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>誕生日</th>
+              <th>年齢</th>
+              <th>芸人</th>
+              <th>所属ユニット</th>
+            </tr>
+          </thead>
+          <tbody>
+            {birthdayRows.map((row) => (
+              <tr>
+                <td>
+                  {formatBirthLikeDate(
+                    row.birth_year,
+                    row.birth_month,
+                    row.birth_day
+                  ) || "（未設定）"}
+                </td>
+                <td>
+                  {formatAge(
+                    calcElapsedYears(
+                      row.birth_year,
+                      row.birth_month,
+                      row.birth_day
+                    )
+                  ) || "（未設定）"}
+                </td>
+                <td>
+                  {row.person_has_profile ? (
+                    <a href={`${base}co/${row.person_id}`}>
+                      {row.person_name}
+                    </a>
+                  ) : (
+                    row.person_name
+                  )}
+                </td>
+                <td>
+                  {row.unit_id
+                    ? row.unit_has_profile
+                      ? (
+                        <a href={`${base}co/${row.unit_id}`}>
+                          {row.unit_name}
+                        </a>
+                      )
+                      : (
+                        row.unit_name
+                      )
+                    : "-"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )}
+
+  {hasUnitFinalist && formationRows.length > 0 && (
+    <section class="section-formation">
+      <h2>決勝進出ユニットの結成年</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>結成日</th>
+              <th>結成年数</th>
+              <th>ユニット</th>
+            </tr>
+          </thead>
+          <tbody>
+            {formationRows.map((row) => (
+              <tr>
+                <td>
+                  {formatBirthLikeDate(
+                    row.birth_year,
+                    row.birth_month,
+                    row.birth_day
+                  ) || "（未設定）"}
+                </td>
+                <td>
+                  {formatFormationYears(
+                    calcElapsedYears(
+                      row.birth_year,
+                      row.birth_month,
+                      row.birth_day
+                    )
+                  ) || "（未設定）"}
+                </td>
+                <td>
+                  {row.unit_has_profile ? (
+                    <a href={`${base}co/${row.unit_id}`}>
+                      {row.unit_name}
+                    </a>
+                  ) : (
+                    row.unit_name
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </section>
   )}
 
