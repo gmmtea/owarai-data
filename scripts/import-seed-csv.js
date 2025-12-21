@@ -194,7 +194,7 @@ function previewFor(file, record){
     case "final_results.csv":
       return pick(record, ["comp","year","comedian_name","comedian_number","rank"]);
     case "judge_scores.csv":
-      return pick(record, ["comp","year","round_no","match_no","seat_no","comedian_name","comedian_number","score"]);
+      return pick(record, ["comp","year","stage","value_kind","group_name","round_no","match_no","order_no","seat_no","comedian_name","comedian_number","score"]);
     default:
       return record;
   }
@@ -562,13 +562,29 @@ db.transaction(() => {
     -- 個票
     CREATE TABLE judge_scores (
       edition_id  INTEGER NOT NULL REFERENCES editions(id),
+
+      -- どのステージのデータか（例: main / revival_audience / revival_final_judges）
+      stage       TEXT    NOT NULL DEFAULT 'main',
+
+      -- 値の種類（score=点数, vote=票, percent=得票率）
+      value_kind  TEXT    NOT NULL DEFAULT 'score',
+
+      -- ブロック（敗者復活戦のA/B/Cなど）
+      group_name  TEXT,
+
       round_no    INTEGER NOT NULL,
       match_no    INTEGER NOT NULL DEFAULT 0,  -- 対戦番号（分割無しの場合は 0 を使用）
+
+      -- ブロック内の登場順（左右決定に使う）
+      order_no    INTEGER,
+
       comedian_id TEXT    NOT NULL REFERENCES comedians(id),
       seat_no     INTEGER NOT NULL,
       score       REAL    NOT NULL,
-      PRIMARY KEY (edition_id, round_no, match_no, comedian_id, seat_no)
+
+      PRIMARY KEY (edition_id, stage, value_kind, round_no, match_no, comedian_id, seat_no)
     );
+
     CREATE INDEX idx_js_edition_round ON judge_scores(edition_id, round_no);
   `);
 
@@ -646,9 +662,17 @@ db.transaction(() => {
     ON CONFLICT(edition_id, seat_no) DO UPDATE SET judge_id=excluded.judge_id
   `);
   const insJudgeScore = db.prepare(`
-    INSERT INTO judge_scores(edition_id, round_no, match_no, comedian_id, seat_no, score)
-    VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(edition_id, round_no, match_no, comedian_id, seat_no) DO UPDATE SET score=excluded.score
+    INSERT INTO judge_scores(
+      edition_id, stage, value_kind, group_name,
+      round_no, match_no, order_no,
+      comedian_id, seat_no, score
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(edition_id, stage, value_kind, round_no, match_no, comedian_id, seat_no)
+    DO UPDATE SET
+      group_name=excluded.group_name,
+      order_no=excluded.order_no,
+      score=excluded.score
   `);
 
   /* ---------- データ投入（順に依存関係を満たす） ---------- */
@@ -928,14 +952,29 @@ db.transaction(() => {
     const ed = selEdByCompYear.get(r.comp, Number(r.year));
     if (!ed) throw new Error(`edition not found: ${r.comp} ${r.year}`);
 
+    const stageRaw = String(r.stage ?? "").trim();
+    const stage = stageRaw !== "" ? stageRaw : "main";
+
+    const kindRaw = String(r.value_kind ?? "").trim();
+    const valueKind = kindRaw !== "" ? kindRaw : "score";
+
+    const groupNameRaw = String(r.group_name ?? "").trim();
+    const groupName = groupNameRaw !== "" ? groupNameRaw : null;
+
+    const orderNoRaw = r.order_no;
+    const orderNo = normIntOrNullLoose(orderNoRaw); // null許容
+
     const roundNo = Number(r.round_no);
     // match_no は空なら 0（非分割ラウンド）に寄せる
     const matchNoRaw = r.match_no;
     let matchNo = normIntOrNullLoose(matchNoRaw);
     if (matchNo == null) matchNo = 0;
 
-    const seatNo  = Number(r.seat_no);
-    if (!Number.isFinite(roundNo) || !Number.isFinite(seatNo)) continue;
+    let seatNo = Number(r.seat_no);
+    if (!Number.isFinite(seatNo)) {
+      if (valueKind === "percent") seatNo = 0;
+      else continue;
+    }
 
     const name = trimOnly(r.comedian_name);
     const numFromCsv = pickNumber(r);
@@ -948,7 +987,7 @@ db.transaction(() => {
     const score = Number(scoreRaw);
     if (!Number.isFinite(score)) continue;
 
-    insJudgeScore.run(ed.id, roundNo, matchNo, co.id, seatNo, score);
+    insJudgeScore.run(ed.id, stage, valueKind, groupName, roundNo, matchNo, orderNo, co.id, seatNo, score);
   }
 
   /* ---------- 決勝進出歴の集計（final_results に書き込み） ---------- */

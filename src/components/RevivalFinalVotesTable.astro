@@ -1,0 +1,99 @@
+---
+const { base, ballots } = Astro.props as {
+  base: string;
+  ballots: Array<{
+    match_no: number;
+    rows: Array<{
+      group_name: string | null;
+      votes: number;
+      comedian_id: string;
+      comedian_name: string;
+    }>;
+    max_votes: number;
+    winner_ids: string[];
+  }>;
+};
+
+function labelOfMatchNo(n: number) {
+  if (n === 1) return "最終決戦";
+  if (n === 2) return "最終決戦（決選投票）";
+  return `最終決戦（投票${n}）`;
+}
+---
+
+{ballots.map((b) => (
+  <section class="revival-final">
+    {/* <h3>{labelOfMatchNo(b.match_no)}</h3> */}
+
+    {b.winner_ids.length > 1 && (
+      <p class="muted">同率のため決着がついていません。</p>
+    )}
+
+    <div class="table-wrap">
+      <table class="final-table">
+        <thead>
+          <tr>
+            <th class="col-name">芸人</th>
+            <th class="col-votes">票数</th>
+          </tr>
+        </thead>
+        <tbody>
+          {b.rows.map((r) => {
+            const isWinner = b.winner_ids.includes(r.comedian_id) && b.winner_ids.length === 1;
+            return (
+              <tr class={isWinner ? "winner-row" : ""}>
+                <td class="name">
+                  <a class={isWinner ? "winner" : ""} href={`${base}co/${r.comedian_id}`}>
+                    {r.comedian_name}
+                  </a>
+                  {r.group_name && <span class="tag">{r.group_name}</span>}
+                </td>
+                <td class="votes">{r.votes}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  </section>
+))}
+
+<style>
+  .final-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  .final-table th, .final-table td { padding: 8px; vertical-align: middle; }
+  .col-name { width: auto; }
+  .col-votes { width: 80px; font-variant-numeric: tabular-nums; }
+
+  td.name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 0;
+  }
+  td.name a {
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+  }
+
+  a.winner { font-weight: 700; }
+  tr.winner-row td { background: var(--accent-weak); }
+
+  .tag {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 2px 6px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 12px;
+    line-height: 1.2;
+    color: #111;
+    background: #fff;
+    vertical-align: middle;
+  }
+
+  .muted { color: var(--muted); font-size: 12px; margin: 6px 0 10px; }
+</style>

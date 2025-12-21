@@ -1,8 +1,10 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { listEditionParams, getEditionTable, getJudgeScoreTable, listEditionYears, getEditionBirthAndFormationTables } from "../../lib/queries";
+import { listEditionParams, getEditionTable, getJudgeScoreTable, listEditionYears, getEditionBirthAndFormationTables, getRevivalAudiencePercentMatches, getRevivalFinalVotes } from "../../lib/queries";
 import JudgeScoresTable from "../../components/JudgeScoresTable.astro";
 import FinalResultsTable from "../../components/FinalResultsTable.astro";
+import RevivalMatchesTable from "../../components/RevivalMatchesTable.astro";
+import RevivalFinalVotesTable from "../../components/RevivalFinalVotesTable.astro";
 
 type ResultColumnRole =
   | "default"
@@ -59,6 +61,8 @@ const finalDateText = formatJpDate(edition.final_date);
 const round1 = getJudgeScoreTable(comp, y, 1);
 const round2 = getJudgeScoreTable(comp, y, 2);
 const round3 = getJudgeScoreTable(comp, y, 3);
+const revivalAudience = getRevivalAudiencePercentMatches(comp, y);
+const revivalFinal = getRevivalFinalVotes(comp, y);
 
 // 投票/得点モード
 const mode1 = round1?.mode ?? "score";
@@ -264,6 +268,23 @@ function formatFormationYears(years?: number | null): string {
       )}
     </div>
   </div>
+  
+  {/* 敗者復活戦 */}
+  {revivalAudience && revivalAudience.groups && revivalAudience.groups.length > 0 && (
+    <section>
+      <h2>敗者復活戦</h2>
+      <RevivalMatchesTable base={base} groups={revivalAudience.groups} />
+    </section>
+  )}
+
+  {revivalFinal && revivalFinal.ballots && revivalFinal.ballots.length > 0 && (
+    <section>
+      <h3>決戦投票</h3>
+      <RevivalFinalVotesTable base={base} ballots={revivalFinal.ballots} />
+      {/* 次のコンテンツとの間にスペースを入れたい。CSSは直接設定 */}
+      <div class="spacer" />
+    </section>
+  )}
 
   {finalRows.length > 0 && (
     <FinalResultsTable base={base} cols={cols} rows={finalRows} />
@@ -590,5 +611,9 @@ function formatFormationYears(years?: number | null): string {
     margin: calc(var(--header-gap) * 2) 0;
     border: 0;
     border-top: 1px solid var(--border);
+  }
+
+  .spacer {
+    height: 32px;
   }
 </style>

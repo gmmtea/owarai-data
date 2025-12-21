@@ -1,0 +1,175 @@
+---
+const { base, groups } = Astro.props as {
+  base: string;
+  groups: Array<{
+    label: string;
+    matches: Array<{
+      match_no: number;
+      left: { comedian_id: string; comedian_name: string; percent: number; order_no: number };
+      right:{ comedian_id: string; comedian_name: string; percent: number; order_no: number };
+    }>;
+  }>;
+};
+
+function fmtInt(p: number) {
+  if (!Number.isFinite(p)) return "";
+  return String(Math.round(p));
+}
+function clamp01to100(p: number) {
+  if (!Number.isFinite(p)) return 0;
+  return Math.max(0, Math.min(100, p));
+}
+---
+{groups.map((g) => (
+  <section class="revival-block">
+    <h3>{g.label}ブロック</h3>
+
+    <div class="table-wrap">
+      <table class="revival-table">
+        <thead>
+          <tr>
+            <th class="col-name">芸人</th>
+            <th class="col-bar">得票率</th>
+            <th class="col-name">芸人</th>
+          </tr>
+        </thead>
+        <tbody>
+          {g.matches.map((m) => {
+            const lp = clamp01to100(m.left.percent);
+            const rp = clamp01to100(m.right.percent);
+            const leftWins = lp > rp;
+            const rightWins = rp > lp;
+            const barClass = leftWins ? "bar left-win" : rightWins ? "bar right-win" : "bar tie";
+            return (
+              <tr>
+                <td class="name">
+                  <a class={leftWins ? "winner" : ""} href={`${base}co/${m.left.comedian_id}`}>{m.left.comedian_name}</a>
+                </td>
+                  <td class="barcell">
+                    <div class="barwrap">
+                      <span class="pct pct-left">{fmtInt(lp)}%</span>
+                        <div class={barClass} role="img" aria-label={`${m.left.comedian_name} ${fmtInt(lp)}% / ${m.right.comedian_name} ${fmtInt(rp)}%`}>
+                          <div class="bar-left" style={`flex: 0 0 ${lp}%`}></div>
+                          <div class="bar-right" style={`flex: 0 0 ${rp}%`}></div>
+                          <div class="bar-inside">
+                            <span class="pct-in">{fmtInt(lp)}%</span>
+                            <span class="pct-in">{fmtInt(rp)}%</span>
+                          </div>
+                        </div>
+                      <span class="pct pct-right">{fmtInt(rp)}%</span>
+                    </div>
+                  </td>
+                <td class="name">
+                  <a class={rightWins ? "winner" : ""} href={`${base}co/${m.right.comedian_id}`}>{m.right.comedian_name}</a>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  </section>
+))}
+
+<style>
+  .revival-table { width: 100%; border-collapse: collapse; }
+
+  .revival-table th, .revival-table td { padding: 8px; vertical-align: middle; }
+
+  /* 芸人名を省略表示にして列を狭くできるようにする */
+  td.name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 0; /* table-layout: fixed と相性がよい */
+  }
+  td.name a {
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+  }
+
+  /* 省略の効きを安定させる */
+  .revival-table { table-layout: fixed; }
+
+  /* 芸人列を必要最小限に寄せ、バーに幅を渡す */
+  .col-name { width: 220px; }
+  .col-bar  { width: auto; }
+
+  /* 極端に狭い/広い画面でも破綻しにくくする（任意） */
+  @media (max-width: 900px) {
+    .col-name { width: 180px; }
+  }
+  @media (max-width: 640px) {
+    .col-name { width: 120px; }
+  }
+
+  .barwrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .pct {
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+    color: #111;
+    width: 44px; /* 100% まで想定して固定 */
+  }
+  .pct-left { text-align: right; }
+  .pct-right { text-align: left; }
+
+  .bar {
+    position: relative;
+    flex: 1 1 auto;
+    height: 22px;
+    border-radius: 999px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--accent-weak);
+    display: flex;
+  }
+  .bar-left, .bar-right {
+    height: 100%;
+    flex: 0 0 auto; /* 念のため: width指定をそのまま使う */
+  }
+
+  /* 勝った側を濃く、負けた側を薄く（オレンジ系で統一） */
+  .bar.left-win .bar-left  { background: var(--accent-strong); }
+  .bar.left-win .bar-right { background: color-mix(in srgb, var(--accent) 30%, #fff); }
+
+  .bar.right-win .bar-left  { background: color-mix(in srgb, var(--accent) 30%, #fff); }
+  .bar.right-win .bar-right { background: var(--accent-strong); }
+
+  /* 同率（念のため）：両方同程度 */
+  .bar.tie .bar-left,
+  .bar.tie .bar-right { background: var(--accent); }
+
+  .bar-inside {
+    position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    padding-inline: 10px;
+    pointer-events: none;
+  }
+  .pct-in {
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+    color: #111;
+    text-shadow: 0 1px 0 rgba(255,255,255,0.75);
+  }
+  .bar.left-win .bar-inside .pct-in:first-child { color: #fff; text-shadow: none; }
+  .bar.right-win .bar-inside .pct-in:last-child { color: #fff; text-shadow: none; }
+
+  /* 狭い画面では外側を消して内側に出す */
+  @media (max-width: 640px) {
+    .pct { display: none; }
+    .bar-inside { display: flex; }
+  }
+
+  a.winner { font-weight: 700; }
+</style>

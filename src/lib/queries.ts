@@ -847,6 +847,8 @@ export function getJudgeScoreTable(comp: string, year: number, round_no: number)
     JOIN comedians co ON co.id=fr.comedian_id
     LEFT JOIN judge_scores js
       ON js.edition_id=fr.edition_id
+     AND js.stage='main'
+     AND js.value_kind='score'
      AND js.round_no=?
      AND js.comedian_id=fr.comedian_id
     WHERE fr.edition_id=?
@@ -930,6 +932,150 @@ export function getJudgeScoreTable(comp: string, year: number, round_no: number)
   }
 
   return { seats, rows: out, mode, groups };
+}
+
+export function getRevivalAudiencePercentMatches(comp: string, year: number) {
+  const ed = db().prepare(`
+    SELECT e.id AS eid
+    FROM editions e JOIN competitions c ON c.id=e.competition_id
+    WHERE c.key=? AND e.year=? LIMIT 1
+  `).get(comp, year) as { eid:number } | undefined;
+  if (!ed) return null;
+
+  const rows = db().prepare(`
+    SELECT
+      js.group_name,
+      js.match_no,
+      js.order_no,
+      js.score AS percent,
+      co.id   AS comedian_id,
+      co.name AS comedian_name,
+      co.reading AS comedian_reading
+    FROM judge_scores js
+    JOIN comedians co ON co.id=js.comedian_id
+    WHERE js.edition_id=?
+      AND js.stage='revival_audience'
+      AND js.value_kind='percent'
+    ORDER BY
+      js.group_name ASC,
+      js.match_no   ASC,
+      js.order_no   ASC,
+      (co.reading IS NULL), co.reading ASC, co.name ASC
+  `).all(ed.eid) as Array<{
+    group_name: string | null;
+    match_no: number;
+    order_no: number | null;
+    percent: number;
+    comedian_id: string;
+    comedian_name: string;
+    comedian_reading: string | null;
+  }>;
+
+  type Side = { comedian_id:string; comedian_name:string; percent:number; order_no:number };
+  type Match = { match_no:number; left:Side; right:Side };
+
+  const groupMap = new Map<string, Map<number, Side[]>>();
+
+  for (const r of rows) {
+    const g = (r.group_name ?? "").trim();
+    if (g === "") continue;
+
+    if (r.match_no == null) continue;
+    if (r.order_no == null) continue;
+
+    if (!groupMap.has(g)) groupMap.set(g, new Map());
+    const byMatch = groupMap.get(g)!;
+    if (!byMatch.has(r.match_no)) byMatch.set(r.match_no, []);
+    byMatch.get(r.match_no)!.push({
+      comedian_id: r.comedian_id,
+      comedian_name: r.comedian_name,
+      percent: r.percent,
+      order_no: r.order_no
+    });
+  }
+
+  const groups = Array.from(groupMap.entries())
+    .sort(([a],[b]) => a.localeCompare(b))
+    .map(([label, byMatch]) => {
+      const matches: Match[] = Array.from(byMatch.entries())
+        .sort(([a],[b]) => a - b)
+        .flatMap(([match_no, sides]) => {
+          if (sides.length !== 2) return [];
+          const [s1, s2] = sides[0].order_no <= sides[1].order_no ? [sides[0], sides[1]] : [sides[1], sides[0]];
+          return [{ match_no, left: s1, right: s2 }];
+        });
+      return { label, matches };
+    });
+
+  return { groups };
+}
+
+export function getRevivalFinalVotes(comp: string, year: number) {
+  const ed = db().prepare(`
+    SELECT e.id AS eid
+    FROM editions e
+    JOIN competitions c ON c.id = e.competition_id
+    WHERE c.key = ? AND e.year = ?
+    LIMIT 1
+  `).get(comp, year) as { eid: number } | undefined;
+
+  if (!ed) return null;
+
+  const rows = db().prepare(`
+    SELECT
+      js.match_no,
+      js.group_name,
+      js.score AS votes,
+      co.id   AS comedian_id,
+      co.name AS comedian_name
+    FROM judge_scores js
+    JOIN comedians co ON co.id = js.comedian_id
+    WHERE js.edition_id = ?
+      AND js.stage = 'revival_final'
+      AND js.value_kind = 'vote'
+      AND js.round_no = 0
+      AND js.seat_no = 0
+    ORDER BY js.match_no ASC, js.score DESC, co.name ASC
+  `).all(ed.eid) as Array<{
+    match_no: number;
+    group_name: string | null;
+    votes: number;
+    comedian_id: string;
+    comedian_name: string;
+  }>;
+
+  if (rows.length === 0) return null;
+
+  const byMatch = new Map<number, typeof rows>();
+  for (const r of rows) {
+    const k = r.match_no ?? 0;
+    if (!byMatch.has(k)) byMatch.set(k, []);
+    byMatch.get(k)!.push(r);
+  }
+
+  const ballots = Array.from(byMatch.entries())
+    .sort(([a], [b]) => a - b)
+    .map(([matchNo, rs]) => {
+      const normalized = rs.map((x) => ({
+        match_no: x.match_no,
+        group_name: x.group_name,
+        votes: Number.isFinite(x.votes) ? Math.round(x.votes) : 0,
+        comedian_id: x.comedian_id,
+        comedian_name: x.comedian_name,
+      }));
+
+      const maxVotes = Math.max(...normalized.map((x) => x.votes));
+      const winners = normalized.filter((x) => x.votes === maxVotes).map((x) => x.comedian_id);
+
+      return {
+        match_no: matchNo,
+        rows: normalized,
+        max_votes: maxVotes,
+        winner_ids: winners, // 同率なら複数
+      };
+    });
+
+  return { ballots };
 }
 
 /* 年リスト（昇順） */
