@@ -268,23 +268,6 @@ function formatFormationYears(years?: number | null): string {
       )}
     </div>
   </div>
-  
-  {/* 敗者復活戦 */}
-  {revivalAudience && revivalAudience.groups && revivalAudience.groups.length > 0 && (
-    <section>
-      <h2>敗者復活戦</h2>
-      <RevivalMatchesTable base={base} groups={revivalAudience.groups} />
-    </section>
-  )}
-
-  {revivalFinal && revivalFinal.ballots && revivalFinal.ballots.length > 0 && (
-    <section>
-      <h3>決戦投票</h3>
-      <RevivalFinalVotesTable base={base} ballots={revivalFinal.ballots} />
-      {/* 次のコンテンツとの間にスペースを入れたい。CSSは直接設定 */}
-      <div class="spacer" />
-    </section>
-  )}
 
   {finalRows.length > 0 && (
     <FinalResultsTable base={base} cols={cols} rows={finalRows} />
@@ -400,6 +383,21 @@ function formatFormationYears(years?: number | null): string {
       />
     </section>
   )}
+  
+  {/* 敗者復活戦 */}
+  {revivalAudience && revivalAudience.groups && revivalAudience.groups.length > 0 && (
+    <section>
+      <h2>敗者復活戦</h2>
+      <RevivalMatchesTable base={base} groups={revivalAudience.groups} />
+    </section>
+  )}
+
+  {revivalFinal && revivalFinal.ballots && revivalFinal.ballots.length > 0 && (
+    <section>
+      <h3>決戦投票</h3>
+      <RevivalFinalVotesTable base={base} ballots={revivalFinal.ballots} />
+    </section>
+  )}
 
   {birthdayRows.length > 0 && (
     <section class="section-birth">
@@ -510,7 +508,7 @@ function formatFormationYears(years?: number | null): string {
       </div>
     </section>
   )}
-
+  
   {/* 準決勝進出者一覧 */}
   {semifinals.length > 0 && (() => {
     const norm = (s:string|undefined|null) => (s ?? "").trim();
@@ -611,9 +609,5 @@ function formatFormationYears(years?: number | null): string {
     margin: calc(var(--header-gap) * 2) 0;
     border: 0;
     border-top: 1px solid var(--border);
-  }
-
-  .spacer {
-    height: 32px;
   }
 </style>
