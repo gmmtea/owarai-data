@@ -2,6 +2,7 @@
 import Base from "../../layouts/Base.astro";
 import type { CoListItem } from "../../lib/queries";
 import {
+  listCompetitions,
   listComedianIdsWithProfile,
   getComedianTables,
   getComedianTablesByYear,
@@ -46,6 +47,15 @@ type Section = {
   columns: ColumnMeta[];
   rows: any[];
   showAlias: boolean;
+  hasRelated: boolean;
+  hasSelf: boolean;
+  hasAliasSelf: boolean;
+};
+
+type Source = {
+  id: string;
+  label: string;
+  is_related: boolean;
 };
 
 function unionColumns(colsArrays: ColumnMeta[][]): ColumnMeta[] {
@@ -96,32 +106,202 @@ function columnIsVisible(c: ColumnMeta, rows: any[]) {
   return false;
 }
 
-// セクション生成
-const sections: Section[] = Object.entries(byComp).map(([comp, block]: any) => {
-  const columnsAllYears = block.years.map((y: any) => y.columns);
-  const columns = unionColumns(columnsAllYears);
+// ===== 本人 + 所属(メンバー/ユニット) の記録を混ぜる =====
+const relatedSources: Source[] =
+  comedian.kind === "unit"
+    ? members.map((m) => ({
+        id: m.link_id,
+        label: `「${m.name}」の記録`,
+        is_related: true,
+      }))
+    : comedian.kind === "person"
+    ? units.map((u) => ({
+        id: u.link_id,
+        label: `「${u.name}」の記録`,
+        is_related: true,
+      }))
+    : [];
 
-  const rows = block.years
-    .flatMap((y: any) => y.rows)
-    .sort((a: any, b: any) => (a.year == null ? 1 : b.year == null ? -1 : b.year - a.year));
+// 重複ID排除（本人と同じIDや、名寄せの都合で重複するケースを潰す）
+const sources: Source[] = (() => {
+  const m = new Map<string, Source>();
+  m.set(id, { id, label: "", is_related: false });
+  for (const s of relatedSources) if (!m.has(s.id)) m.set(s.id, s);
+  return Array.from(m.values());
+})();
+const hasAnyRelated = sources.some((s) => s.is_related);
 
-  // ここで“全行空”の列を落とす
+// comp 表示用（byComp を sources 分集約）
+const tablesBySource = sources
+  .map((s) => ({
+    ...s,
+    data: s.id === id ? data : getComedianTables(s.id),
+  }))
+  .filter((x) => !!x.data) as Array<Source & { data: any }>;
+
+const compMap = new Map<
+  string,
+  { competition_name: string; columnsArrays: ColumnMeta[][]; rows: any[] }
+>();
+
+for (const st of tablesBySource) {
+  for (const [comp, block] of Object.entries(st.data.byComp ?? {}) as any) {
+    const e =
+      compMap.get(comp) ??
+      {
+        competition_name: String(block.competition_name),
+        columnsArrays: [] as ColumnMeta[][],
+        rows: [] as any[],
+      };
+
+    for (const y of (block.years ?? []) as any[]) {
+      e.columnsArrays.push((y.columns ?? []) as ColumnMeta[]);
+      for (const r of (y.rows ?? []) as any[]) {
+        const baseAlias =
+          typeof r.alias_label === "string" ? r.alias_label.trim() : "";
+
+        const relatedLabel = st.is_related ? st.label : "";
+
+        e.rows.push({
+          ...r,
+          // 本人: 大会での名義（alias_label）
+          // 関連: 「所属メンバー: ○○」等の関連元ラベルのみ（大会名義は載せない）
+          alias_label: st.is_related ? relatedLabel : baseAlias,
+          _is_related: st.is_related,
+        });
+      }
+    }
+    compMap.set(comp, e);
+  }
+}
+
+const compOrder = new Map(
+  listCompetitions().map((c) => [c.key, c.sort_order] as const)
+);
+
+const sections: Section[] = Array.from(compMap.entries())
+  .map(([comp, e]) => {
+  const columns = unionColumns(e.columnsArrays);
+
+  // 関連行はグレー表示＆後ろ寄せ（任意の整列規則）
+  const rows = e.rows.sort((a: any, b: any) => {
+    const ay = a.year == null ? -1 : a.year;
+    const by = b.year == null ? -1 : b.year;
+    if (by !== ay) return by - ay;
+    const ar = a._is_related ? 1 : 0;
+    const br = b._is_related ? 1 : 0;
+    return ar - br;
+  });
+
   const visibleColumns = columns.filter((c) => columnIsVisible(c, rows));
-
-  // 名義列（alias_label）も全行空なら非表示
-  const showAlias = rows.some((r: any) => typeof r.alias_label === "string" && r.alias_label.trim() !== "");
+  const showAlias =
+    rows.some((r: any) => typeof r.alias_label === "string" && r.alias_label.trim() !== "") ||
+    rows.some((r: any) => !!r._is_related);
+  const hasRelated = rows.some((r: any) => !!r._is_related);
+  const hasSelf = rows.some((r: any) => !r._is_related);
+  const hasAliasSelf = rows.some(
+    (r: any) =>
+      !r._is_related &&
+      typeof r.alias_label === "string" &&
+      r.alias_label.trim() !== ""
+  );
 
   return {
     comp,
-    competition_name: block.competition_name,
+    competition_name: e.competition_name,
     columns: visibleColumns,
     rows,
     showAlias,
+    hasRelated,
+    hasSelf,
+    hasAliasSelf,
   } as any;
-});
+  })
+  .sort((a: any, b: any) => {
+    const ao = compOrder.get(a.comp);
+    const bo = compOrder.get(b.comp);
+    const ap = ao == null ? 9_999_999 : ao;
+    const bp = bo == null ? 9_999_999 : bo;
+    if (ap !== bp) return ap - bp;
+    return String(a.comp).localeCompare(String(b.comp));
+  });
 
-const dataYear = getComedianTablesByYear(id)!;
-const yearBlocks = dataYear.byYear;
+// year 表示用（byYear を sources 分集約）
+const dataYearSelf = getComedianTablesByYear(id)!;
+const tablesYearBySource = sources
+  .map((s) => ({
+    ...s,
+    data: s.id === id ? dataYearSelf : getComedianTablesByYear(s.id),
+  }))
+  .filter((x) => !!x.data) as Array<Source & { data: any }>;
+
+const yearMap = new Map<
+  string,
+  { year: number | null; columnsArrays: ColumnMeta[][]; rows: any[] }
+>();
+
+for (const st of tablesYearBySource) {
+  for (const blk of st.data.byYear ?? []) {
+    const key = blk.year == null ? "unknown" : String(blk.year);
+    const e =
+      yearMap.get(key) ??
+      {
+        year: (blk.year ?? null) as number | null,
+        columnsArrays: [] as ColumnMeta[][],
+        rows: [] as any[],
+      };
+
+    e.columnsArrays.push((blk.columns ?? []) as ColumnMeta[]);
+    for (const r of (blk.rows ?? []) as any[]) {
+    const baseAlias =
+      typeof r.alias_label === "string" ? r.alias_label.trim() : "";
+    const relatedLabel = st.is_related ? st.label : "";
+    e.rows.push({
+      ...r,
+      alias_label: st.is_related ? relatedLabel : baseAlias,
+      _is_related: st.is_related,
+    });
+    }
+    yearMap.set(key, e);
+  }
+}
+
+const yearBlocks = Array.from(yearMap.values())
+  .map((e) => {
+    const columns = unionColumns(e.columnsArrays);
+    const rows = e.rows.slice().sort((a: any, b: any) => {
+      // 1) 決勝日ベースの時系列（降順）
+      const ad = typeof a.final_sort === "number" ? a.final_sort : 0;
+      const bd = typeof b.final_sort === "number" ? b.final_sort : 0;
+      if (bd !== ad) return bd - ad;
+
+      // 2) 同日の安定化（大会順→大会キー）
+      const aso = a.comp_sort_order ?? 9_999_999;
+      const bso = b.comp_sort_order ?? 9_999_999;
+      if (aso !== bso) return aso - bso;
+      const ck = String(a.comp ?? "").localeCompare(String(b.comp ?? ""));
+      if (ck !== 0) return ck;
+
+      // 3) 同一大会内：本人行→関連行（見た目の安定化）
+      const ar = a._is_related ? 1 : 0;
+      const br = b._is_related ? 1 : 0;
+      if (ar !== br) return ar - br;
+
+      // 4) 最後の安定化（ID）
+      return String(a.link_id ?? "").localeCompare(String(b.link_id ?? ""));
+    });
+    const visibleColumns = columns.filter((c) => columnIsVisible(c, rows));
+    const showAlias = rows.some(
+      (r: any) => typeof r.alias_label === "string" && r.alias_label.trim() !== ""
+    );
+    const hasRelated = rows.some((r: any) => !!r._is_related);
+    return { year: e.year, columns: visibleColumns, rows, showAlias, hasRelated };
+  })
+  .sort((a: any, b: any) => {
+    const ay = a.year == null ? -1 : a.year;
+    const by = b.year == null ? -1 : b.year;
+    return by - ay;
+  });
 
 // タイトル用の表示名を作成
 const titleName =
@@ -155,7 +335,10 @@ type Column = {
 };
 
 // 共通: 列に role を付ける helper
-function enrichColumns(rawCols: any[], opts?: { withAlias?: boolean }): Column[] {
+function enrichColumns(
+  rawCols: any[],
+  opts?: { withAlias?: boolean }
+): Column[] {
   const cols: Column[] = rawCols.map((c: any) => {
     let role: ResultColumnRole | undefined;
 
@@ -173,6 +356,7 @@ function enrichColumns(rawCols: any[], opts?: { withAlias?: boolean }): Column[]
       key: "alias_label",
       label: "名義",
       col_class: "col-alias",
+      is_multiline: 1,
       role: "alias",
     });
   }
@@ -251,7 +435,7 @@ const yearBlocksWithCols = yearBlocks.map((blk: any) => ({
     </p>
   )}
 
-  <!-- ★ 追加ブロック: 関連ユニット（ユニットページ時） -->
+  <!-- 関連ユニット（ユニットページ時） -->
   {comedian.kind === 'unit' && relatedUnits.length > 0 && (
     <p class="aff-line muted">
       <span class="aff-label">関連ユニット:</span>{" "}
@@ -266,7 +450,7 @@ const yearBlocksWithCols = yearBlocks.map((blk: any) => ({
     </p>
   )}
 
-  <!-- ★ 追加ブロック: 関連メンバー（メンバーページ時） -->
+  <!-- 関連メンバー（メンバーページ時） -->
   {comedian.kind === 'person' && relatedMembers.length > 0 && (
     <p class="aff-line muted">
       <span class="aff-label">関連メンバー:</span>{" "}
@@ -283,17 +467,37 @@ const yearBlocksWithCols = yearBlocks.map((blk: any) => ({
 
   <!-- 表示モード切替 -->
   <div class="view-toggle" id="view-toggle" data-mode="comp">
-    <button type="button" data-go="comp" class="btn is-active">大会ごと</button>
-    <button type="button" data-go="year" class="btn">年ごと</button>
+    <div class="view-toggle__left">
+      <div class="view-toggle__buttons">
+        <button class="btn is-active" type="button" data-go="comp">大会ごと</button>
+        <button class="btn" type="button" data-go="year">年ごと</button>
+      </div>
+      {hasAnyRelated && (
+        <button
+          id="toggle-related"
+          class="rel-switch-row"
+          type="button"
+          role="switch"
+          aria-checked="true"
+        >
+          <span class="rel-switch-label">
+            {comedian.kind === "person" ? "所属ユニットの記録を表示" : "所属メンバーの記録を表示"}
+          </span>
+          <span class="rel-switch-track" aria-hidden="true">
+            <span class="rel-switch-knob" aria-hidden="true"></span>
+          </span>
+        </button>
+      )}
+    </div>
   </div>
 
   <!-- 大会ごと表示 -->
   <div id="view-comp">
     {sectionsWithCols.map((sec) => (
-      <section>
+      <section class="results-section" data-has-self={sec.hasSelf ? "1" : "0"}>
         <h2>{sec.competition_name}</h2>
         <div class="table-wrap">
-          <table>
+          <table data-has-alias-self={sec.hasAliasSelf ? "1" : "0"}>
             <thead>
               <tr>
                 <th class="sticky-1 col-year">回</th>
@@ -308,7 +512,7 @@ const yearBlocksWithCols = yearBlocks.map((blk: any) => ({
                 const label = r.short_label ?? (r.year != null ? `${r.year}` : "—");
                 const linkable = r.year != null;
                 return (
-                  <tr>
+                  <tr class={r._is_related ? "is-related" : ""}>
                     <td class="sticky-1 col-year">
                       {linkable ? (
                         <a href={`${base}${sec.comp}/${r.year}`}>{label}</a>
@@ -334,7 +538,7 @@ const yearBlocksWithCols = yearBlocks.map((blk: any) => ({
   <!-- 年ごと表示（新規） -->
   <div id="view-year" hidden>
     {yearBlocksWithCols.map((blk) => (
-      <section>
+<section class="results-section">
         <h2>{blk.year != null ? `${blk.year}年` : "年不明"}</h2>
         <div class="table-wrap">
           <table>
@@ -349,7 +553,7 @@ const yearBlocksWithCols = yearBlocks.map((blk: any) => ({
             </thead>
             <tbody>
               {blk.rows.map((r: any) => (
-                <tr>
+                <tr class={r._is_related ? "is-related" : ""}>
                   <td class="sticky-1 col-comp">
                     <a href={`${base}${r.comp}/${r.year}`}>{r.competition_name}</a>
                   </td>
@@ -366,20 +570,185 @@ const yearBlocksWithCols = yearBlocks.map((blk: any) => ({
   </div>
 
   <style>
-    .view-toggle { display:flex; gap:0.5rem; margin:1rem 0; }
+    .view-toggle {
+      display:flex;
+      align-items:center;
+      justify-content: flex-start;
+      gap:0.75rem;
+      margin:1rem 0;
+    }
+    .view-toggle__left{
+      display:flex;
+      align-items:center;
+      gap:0.75rem;
+      flex-wrap: wrap; /* 画面が狭いときに自然に折り返す */
+    }
+    .view-toggle__buttons{
+      display:flex;
+      gap:0.5rem;
+      flex: 0 0 auto;
+    }
+
+    /* スイッチ行はボタン群の近くで、過剰に横幅を取らない */
+    .rel-switch-row{
+      flex: 0 0 auto;
+      max-width: 100%;
+    }
+    .rel-switch-label{
+      white-space: nowrap;
+    }
     .btn { border:1px solid var(--border, #ccc); padding:0.3rem 0.6rem; border-radius:6px; background:#fff; cursor: pointer; }
     .btn.is-active { background: var(--accent-weak, #eef6ff); }
     .ext-link { display:inline-flex; gap:0.25rem; align-items:center; }
     .ext-ico  { width:1em; height:1em; fill: currentColor; }
+
+    /* 関連行はセル文字をグレー（バッジ列は除外） */
+    :global(tr.is-related td:not(.col-rank)) {
+      color: var(--muted);
+    }
+    
+    /* 関連行の表示/非表示（JSが dataset を切り替える） */
+    html[data-show-related="0"] tr.is-related { display: none; }
+
+    /* 関連を非表示にしたとき、本人行が1つもないセクションは非表示 */
+    html[data-show-related="0"] section.results-section[data-has-self="0"] {
+      display: none;
+    }
+
+    /* 関連を非表示にしたとき、本人行に「名義」が一切ない表は「名義」列ごと隠す */
+    html[data-show-related="0"] table[data-has-alias-self="0"] th.col-alias,
+    html[data-show-related="0"] table[data-has-alias-self="0"] td.col-alias {
+      display: none;
+    }
+    /* 関連を非表示にしたとき、本人行に「名義」が一切ない表は「名義」列ごと隠す */
+    html[data-show-related="0"] :global(table[data-has-alias-self="0"] th.col-alias) {
+      display: none;
+    }
+    html[data-show-related="0"] :global(table[data-has-alias-self="0"] td.col-alias) {
+      display: none;
+    }
+    .rel-toggle { display:inline-flex; gap:0.4rem; align-items:center; user-select:none; }
+    .rel-toggle input { transform: translateY(0.5px); }
+
+    .rel-switch-wrap{
+      display:flex;
+      align-items:center;
+      gap:0.6rem;
+    }
+
+    .rel-switch-label{
+      color: var(--muted);
+      font-size: 13px;
+      user-select:none;
+    }
+
+    /* switch button */
+.rel-switch-row{
+  display:flex;
+  align-items:center;
+  gap:0.6rem;
+  border:1px solid var(--border);
+  background:#fff;
+  border-radius:999px;
+  padding:6px 10px;
+  cursor:pointer;
+}
+
+.rel-switch-row:hover{
+  background: color-mix(in srgb, var(--accent-weak) 55%, #fff);
+}
+
+.rel-switch-row:focus-visible{
+  outline:2px solid color-mix(in srgb, var(--accent) 55%, #fff);
+  outline-offset:2px;
+}
+
+.rel-switch-label{
+  color: var(--muted);
+  font-size: 13px;
+  user-select:none;
+  white-space: nowrap;
+}
+
+.rel-switch-track{
+  position:relative;
+  width:40px;
+  height:22px;
+  border-radius:999px;
+  background: var(--accent-weak);
+  border:1px solid var(--border);
+  transition: background 120ms ease, border-color 120ms ease;
+  flex: 0 0 auto;
+}
+
+.rel-switch-knob{
+  position:absolute;
+  top:2px;
+  left:2px;
+  width:18px;
+  height:18px;
+  border-radius:50%;
+  background:#fff;
+  border:1px solid var(--border);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+  transition: transform 140ms ease, border-color 120ms ease;
+}
+
+.rel-switch-row[aria-checked="true"] .rel-switch-track{
+  background: var(--accent-strong);
+  border-color: color-mix(in srgb, var(--accent-strong) 70%, var(--border));
+}
+.rel-switch-row[aria-checked="true"] .rel-switch-knob{
+  transform: translateX(18px);
+  border-color: color-mix(in srgb, var(--accent-strong) 40%, var(--border));
+}
+
   </style>
 
   <script is:inline>
     const STORAGE_KEY = 'co.viewMode'; // 'comp' | 'year'
+    const STORAGE_KEY_RELATED = 'co.showRelated'; // '1' | '0'
 
     const wrap  = document.getElementById('view-toggle');
     const btns  = Array.from(wrap?.querySelectorAll('button[data-go]') ?? []);
     const vComp = document.getElementById('view-comp');
     const vYear = document.getElementById('view-year');
+    const relSwitch = document.getElementById('toggle-related');
+
+    function setShowRelated(show, { persist = true, updateUrl = true } = {}) {
+      document.documentElement.dataset.showRelated = show ? '1' : '0';
+
+      if (relSwitch) {
+        relSwitch.setAttribute('aria-checked', show ? 'true' : 'false');
+      }
+
+      if (persist) localStorage.setItem(STORAGE_KEY_RELATED, show ? '1' : '0');
+      if (updateUrl) {
+        const u = new URL(location.href);
+        u.searchParams.set('rel', show ? '1' : '0');
+        history.replaceState(null, '', u);
+      }
+      refreshEmptySections();
+    }
+
+    function readSwitchState() {
+      if (!relSwitch) return true;
+      return relSwitch.getAttribute('aria-checked') === 'true';
+    }
+
+    function toggleRelated() {
+      setShowRelated(!readSwitchState());
+    }
+
+    if (relSwitch) {
+      relSwitch.addEventListener('click', toggleRelated);
+      relSwitch.addEventListener('keydown', (e) => {
+        if (e.key === ' ' || e.key === 'Enter') {
+          e.preventDefault();
+          toggleRelated();
+        }
+      });
+    }
 
     function setMode(mode, { persist = true, updateUrl = true } = {}) {
       if (!wrap || !vComp || !vYear) return;
@@ -393,6 +762,7 @@ const yearBlocksWithCols = yearBlocks.map((blk: any) => ({
         u.searchParams.set('view', mode);
         history.replaceState(null, '', u);
       }
+      refreshEmptySections();
     }
 
     function readInitialMode() {
@@ -401,6 +771,29 @@ const yearBlocksWithCols = yearBlocks.map((blk: any) => ({
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved === 'year' || saved === 'comp') return saved;
       return 'comp';
+    }
+
+    function readInitialRelated() {
+      const q = new URL(location.href).searchParams.get('rel');
+      if (q === '0') return false;
+      if (q === '1') return true;
+      const saved = localStorage.getItem(STORAGE_KEY_RELATED);
+      if (saved === '0') return false;
+      if (saved === '1') return true;
+      return true;
+    }
+
+    function refreshEmptySections() {
+      const mode = wrap?.getAttribute('data-mode') || 'comp';
+      const root = (mode === 'year') ? vYear : vComp;
+      if (!root) return;
+
+      root.querySelectorAll('section.results-section').forEach((sec) => {
+        sec.hidden = false;
+        const trs = Array.from(sec.querySelectorAll('tbody tr'));
+        const visibleCount = trs.filter((tr) => getComputedStyle(tr).display !== 'none').length;
+        sec.hidden = (visibleCount === 0);
+      });
     }
 
     btns.forEach(b => {
@@ -414,9 +807,14 @@ const yearBlocksWithCols = yearBlocks.map((blk: any) => ({
     window.addEventListener('popstate', () => {
       const q = new URL(location.href).searchParams.get('view');
       if (q === 'year' || q === 'comp') setMode(q, { persist: false, updateUrl: false });
+      const r = new URL(location.href).searchParams.get('rel');
+      if (r === '0' || r === '1') setShowRelated(r === '1', { persist: false, updateUrl: false });
+      refreshEmptySections();
     });
 
     // 初期表示（URL > localStorage > 既定）
     setMode(readInitialMode(), { persist: false, updateUrl: false });
+    setShowRelated(readInitialRelated(), { persist: false, updateUrl: false });
+    refreshEmptySections();
   </script>
 </Base>
