@@ -67,6 +67,7 @@
         u.searchParams.set('rel', show ? '1' : '0');
         history.replaceState(null, '', u);
       }
+      refreshEmptySections();
     }
 
     function readSwitchState() {
@@ -127,6 +128,7 @@
       if (!root) return;
 
       root.querySelectorAll('section.results-section').forEach((sec) => {
+        sec.hidden = false;
         const trs = Array.from(sec.querySelectorAll('tbody tr'));
         const visibleCount = trs.filter((tr) => getComputedStyle(tr).display !== 'none').length;
         sec.hidden = (visibleCount === 0);
