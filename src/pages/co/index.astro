@@ -1,6 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { listComediansCanonicalOnly } from "../../lib/queries";
+import { listComediansCanonicalOnlyWithRelatedRanks as listComediansCanonicalOnly } from "../../lib/queries";
 
 const base = import.meta.env.BASE_URL;
 
@@ -240,37 +240,38 @@ others.sort((a, b) => {
   {groups.map((g) => {
     const row = rowBuckets[g.key];
     const nonEmptySubs = Object.entries(row).filter(([, arr]) => arr.length > 0);
+
+    // この行に1件も無いなら、見出しごと出さない
+    if (nonEmptySubs.length === 0) return null;
+
     return (
-      <section>
+      <section class="co-row" data-row-key={g.key}>
         <h2 id={`row-${g.key}`}>{g.key}行</h2>
-        {nonEmptySubs.length ? (
-          nonEmptySubs.map(([sub, arr]) => (
-            <p class="name-line">
-              <strong>{sub}</strong>:{" "}
-              {arr.map((it, i) => (
-                <span
-                  class="co-item"
-                  data-kind={it.kind}
-                  data-m1-rank={it.m1_rank_sort ?? ""}
-                  data-koc-rank={it.koc_rank_sort ?? ""}
-                  data-r1-rank={it.r1_rank_sort ?? ""}
-                >
-                  {i > 0 && " / "}
-                  <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
-                </span>
-              ))}
-            </p>
-          ))
-        ) : (
-          <p class="muted">該当なし</p>
-        )}
+
+        {nonEmptySubs.map(([sub, arr]) => (
+          <p class="name-line">
+            <strong>{sub}</strong>:{" "}
+            {arr.map((it, i) => (
+              <span
+                class="co-item"
+                data-kind={it.kind}
+                data-m1-rank={it.m1_rank_sort ?? ""}
+                data-koc-rank={it.koc_rank_sort ?? ""}
+                data-r1-rank={it.r1_rank_sort ?? ""}
+              >
+                {i > 0 && " / "}
+                <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
+              </span>
+            ))}
+          </p>
+        ))}
       </section>
     );
   })}
 
   {/* その他芸人（ラテン文字・漢字のみ等） */}
   {others.length > 0 && (
-    <section>
+    <section class="co-row-section" data-row="others">
       <h2>その他</h2>
       <p class="name-line">
         {others.map((it, i) => (
@@ -478,6 +479,15 @@ others.sort((a, b) => {
     countEl.textContent = `（${visibleCount}件）`;
   }
 
+  function updateRowSectionVisibility() {
+    const sections = Array.from(document.querySelectorAll('section.co-row'));
+    sections.forEach(sec => {
+      const items = Array.from(sec.querySelectorAll('.co-item'));
+      const hasVisible = items.some(el => !el.hasAttribute('hidden'));
+      sec.hidden = !hasVisible;
+    });
+  }
+
   function applyFilter(state) {
     coItems.forEach(el => {
       const itemKind = el.getAttribute('data-kind') || 'unit';
@@ -499,6 +509,7 @@ others.sort((a, b) => {
     });
 
     updateSeparatorsAndEmptyLines();
+    updateRowSectionVisibility();
     updateCount();
   }
 

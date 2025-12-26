@@ -459,6 +459,101 @@ export function listComediansCanonicalOnly(): CoCanonicalRow[] {
   `).all() as CoCanonicalRow[];
 }
 
+// 芸人一覧の「進出経験」フィルタ用：
+// 本人 + 直接の所属関係（person→所属ユニット / unit→所属メンバー）の記録も含めた最良(rank_sort最小)を返す
+export function listComediansCanonicalOnlyWithRelatedRanks(): CoCanonicalRow[] {
+  const BIG = 99999999;
+
+  const rows = db().prepare(`
+    WITH canon AS (
+      SELECT id AS raw_id, COALESCE(canonical_id, id) AS canon_id
+      FROM comedians
+    ),
+    fr_best AS (
+      SELECT
+        can.canon_id AS canon_id,
+        comp.key     AS comp_key,
+        MIN(fr.rank_sort) AS best_rank_sort
+      FROM final_results fr
+      JOIN canon can        ON can.raw_id = fr.comedian_id
+      JOIN editions e       ON e.id = fr.edition_id
+      JOIN competitions comp ON comp.id = e.competition_id
+      GROUP BY can.canon_id, comp.key
+    ),
+    rel AS (
+      SELECT
+        c.id AS base_id,
+        CASE
+          WHEN c.kind = 'person' THEN ucan.canon_id
+          WHEN c.kind = 'unit'   THEN pcan.canon_id
+          ELSE NULL
+        END AS rel_canon_id
+      FROM comedians c
+      JOIN memberships m
+      JOIN canon pcan ON pcan.raw_id = m.person_id
+      JOIN canon ucan ON ucan.raw_id = m.unit_id
+      WHERE c.canonical_id IS NULL
+        AND COALESCE(c.has_profile, 0) = 1
+        AND (
+          (c.kind = 'person' AND pcan.canon_id = c.id)
+          OR
+          (c.kind = 'unit'   AND ucan.canon_id = c.id)
+        )
+    ),
+    ids AS (
+      SELECT c.id AS base_id, c.id AS canon_id
+      FROM comedians c
+      WHERE c.canonical_id IS NULL
+        AND COALESCE(c.has_profile, 0) = 1
+      UNION ALL
+      SELECT base_id, rel_canon_id
+      FROM rel
+      WHERE rel_canon_id IS NOT NULL
+    )
+    SELECT
+      c.id,
+      c.name,
+      c.reading,
+      c.kind,
+
+      COALESCE((
+        SELECT MIN(b.best_rank_sort)
+        FROM ids i
+        JOIN fr_best b ON b.canon_id = i.canon_id
+        WHERE i.base_id = c.id AND b.comp_key = 'm1'
+      ), :BIG) AS m1_rank_sort,
+
+      COALESCE((
+        SELECT MIN(b.best_rank_sort)
+        FROM ids i
+        JOIN fr_best b ON b.canon_id = i.canon_id
+        WHERE i.base_id = c.id AND b.comp_key = 'koc'
+      ), :BIG) AS koc_rank_sort,
+
+      COALESCE((
+        SELECT MIN(b.best_rank_sort)
+        FROM ids i
+        JOIN fr_best b ON b.canon_id = i.canon_id
+        WHERE i.base_id = c.id AND b.comp_key = 'r1'
+      ), :BIG) AS r1_rank_sort
+
+    FROM comedians c
+    WHERE c.canonical_id IS NULL
+      AND COALESCE(c.has_profile, 0) = 1
+    ORDER BY COALESCE(c.reading, c.name)
+  `).all({ BIG }) as any[];
+
+  return rows.map((r: any) => ({
+    id: r.id,
+    name: r.name,
+    reading: r.reading,
+    kind: r.kind,
+    m1_rank_sort: r.m1_rank_sort === BIG ? null : r.m1_rank_sort,
+    koc_rank_sort: r.koc_rank_sort === BIG ? null : r.koc_rank_sort,
+    r1_rank_sort: r.r1_rank_sort === BIG ? null : r.r1_rank_sort,
+  })) as CoCanonicalRow[];
+}
+
 /* 芸人ページ：大会ごとに年の縦表（追加列の選定は大会年ごとに実データベース準拠） */
 export function getComedianTables(comedianId: string) {
   const me = db().prepare(`
