@@ -1,0 +1,66 @@
+---
+import Base from "../../layouts/Base.astro";
+import { listUpdates } from "../../lib/queries";
+
+const base = import.meta.env.BASE_URL;
+const updates = listUpdates();
+
+// "YYYY-MM-DD" → "YYYY年MM月DD日(曜)"
+function formatJpDateWithWeek(s?: string | null) {
+  if (!s) return "";
+  const m = String(s).trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (!m) return String(s);
+  const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  const youbi = ["日","月","火","水","木","金","土"][dt.getUTCDay()];
+  return `${y}年${mo}月${d}日(${youbi})`;
+}
+---
+
+<Base title="更新履歴 | お笑い主要データまとめ">
+  <nav class="breadcrumbs">
+    <a href={base}>トップ</a><span class="sep">/</span>
+    <span>更新履歴</span>
+  </nav>
+
+  <h1>更新履歴</h1>
+
+  {updates.length === 0 ? (
+    <p class="muted">更新履歴はまだありません。</p>
+  ) : (
+    <table class="updates-table">
+      <thead>
+        <tr>
+          <th>日付</th>
+          <th>内容</th>
+        </tr>
+      </thead>
+      <tbody>
+        {updates.map((u) => (
+          <tr>
+            <td class="date">{formatJpDateWithWeek(u.date)}</td>
+            <td class="content"><span class="preline">{u.content}</span></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )}
+
+  <style>
+    .updates-table { width: 100%; border-collapse: collapse; }
+    .updates-table th, .updates-table td {
+      padding: 8px;
+      border-bottom: 1px solid var(--border, #ddd);
+      vertical-align: top;
+      text-align: left;
+    }
+    .updates-table th {
+      position: sticky;
+      top: 0;
+      background: var(--card-bg, #fff);
+      z-index: 1;
+    }
+    .date { white-space: nowrap; }
+    .preline { white-space: pre-line; }
+  </style>
+</Base>

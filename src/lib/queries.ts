@@ -1280,3 +1280,39 @@ export function listComedianIdsWithProfile(): string[] {
     ORDER BY reading IS NULL, reading, name
   `).all().map((r:any) => r.id);
 }
+
+/* ============================= 更新履歴 ============================= */
+export type UpdateRow = {
+  date: string;    // 'YYYY-MM-DD'
+  content: string; // プレーンテキスト（改行は "\\n" で保存されている想定）
+};
+
+function unescapeUpdateContent(content: string): string {
+  // CSV側要件：「改行する場合は "\\n"」
+  return String(content ?? "").replace(/\\n/g, "\n");
+}
+
+export function listUpdates(limit?: number): UpdateRow[] {
+  const lim = (limit == null) ? null : Math.max(0, Math.trunc(limit));
+  const rows = (lim == null)
+    ? db().prepare(`
+        SELECT date, content
+        FROM updates
+        ORDER BY date DESC
+      `).all()
+    : db().prepare(`
+        SELECT date, content
+        FROM updates
+        ORDER BY date DESC
+        LIMIT ?
+      `).all(lim);
+
+  return (rows as any[]).map((r) => ({
+    date: String(r.date),
+    content: unescapeUpdateContent(String(r.content ?? "")),
+  }));
+}
+
+export function listLatestUpdates(): UpdateRow[] {
+  return listUpdates(3);
+}

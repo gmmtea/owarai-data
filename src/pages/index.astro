@@ -1,6 +1,6 @@
 ---
 import Base from "../layouts/Base.astro";
-import { listEditionParams, listCompetitions } from "../lib/queries";
+import { listEditionParams, listCompetitions, listLatestUpdates } from "../lib/queries";
 
 const base = import.meta.env.BASE_URL;
 
@@ -33,6 +33,19 @@ const cards = Array.from(groups.entries()).map(([comp, list]) => {
 
 // 優先度昇順で並べる（小さい=高優先→先に積む）
 cards.sort((a,b) => a.priority - b.priority);
+
+const latestUpdates = listLatestUpdates();
+
+// "YYYY-MM-DD" → "YYYY年MM月DD日(曜)"（曜日はUTC基準で算出してTZズレを避ける）
+function formatJpDateWithWeek(s?: string | null) {
+  if (!s) return "";
+  const m = String(s).trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (!m) return String(s);
+  const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  const youbi = ["日","月","火","水","木","金","土"][dt.getUTCDay()];
+  return `${y}年${mo}月${d}日(${youbi})`;
+}
 ---
 
 <Base title="お笑い主要データまとめ">
@@ -42,6 +55,27 @@ cards.sort((a,b) => a.priority - b.priority);
     <p class="muted">
       お笑い芸人やお笑い賞レースの記録を横断して参照できる非公式データ集です。
     </p>
+
+    <section class="scope-details updates-snippet" aria-label="最新の更新">
+      <div class="scope-summary updates-head">
+        <h2 class="updates-title">最新の更新</h2>
+        <a class="updates-all" href={`${base}updates/`}>すべて見る</a>
+      </div>
+
+      {latestUpdates.length === 0 ? (
+        <p class="muted">更新履歴はまだありません。</p>
+      ) : (
+        <ul class="muted updates-list">
+          {latestUpdates.map((u) => (
+            <li class="updates-item">
+              <span class="updates-date">{formatJpDateWithWeek(u.date)}</span>
+              <span class="updates-content">{u.content}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+
     <details class="scope-details">
       <summary class="scope-summary">
         <svg class="chev" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -240,5 +274,28 @@ cards.sort((a,b) => a.priority - b.priority);
       cursor: pointer;
     }
     .toggle:hover { background: #f8f8f8; }
+
+    /* 更新履歴（トップ用） */
+    .updates-snippet {
+      margin: 12px 0;
+    }
+    .updates-head {
+      justify-content: space-between;
+      cursor: default;
+    }
+    .updates-title { margin: 0; font-size: 1.0rem; }
+    .updates-all { font-size: 0.9rem; white-space: nowrap; }
+    .updates-list { margin: 10px 0 2px 1.2em; padding: 0; }
+    .updates-item {
+      display: grid;
+      grid-template-columns: 14ch 1fr; /* "YYYY年M月D日(曜)" が収まる程度 */
+      column-gap: 30px;
+      align-items: start;
+    }
+    .updates-date {
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+    .updates-content { white-space: pre-line; }
   </style>
 </Base>

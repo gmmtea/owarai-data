@@ -233,6 +233,7 @@ const judgesCsv          = readCsv("judges.csv");           // name
 const editionJudgesCsv   = readCsv("edition_judges.csv");   // comp,year,seat_no,judge_name
 const judgeScoresCsv     = readCsv("judge_scores.csv");     // comp,year,round_no,match_no,comedian_name,comedian_note,seat_no,score
 const membershipsCsv     = readCsv("memberships.csv");      // unit_name,unit_note,person_name,person_note
+const updatesCsv         = readCsv("updates.csv");          // date,content
 
 /* ============================= final_results の動的列定義 ============================= */
 // 既知の基本キー以外の列を追加列として採用（型はヘッダ値から簡易推定）
@@ -338,6 +339,33 @@ const usedByMembershipsOrFinal = new Set(); // keyCo(name,number)
 
 // 直接参照された (name,number) キー群
 const usedDirect = new Set();
+
+// 0) updates.csv（更新履歴）
+//    - date: "YYYY-MM-DD" を想定
+//    - 同一 date は禁止（主キー要件）
+{
+  const seenDates = new Set();
+  for (let i = 0; i < updatesCsv.length; i++) {
+    const r = updatesCsv[i];
+    const line = i + 2;
+    const file = "updates.csv";
+
+    const date = String(r.date ?? "").trim();
+    if (!date) {
+      pushErr(file, line, "UP_DATE_EMPTY", "date が空です");
+      continue;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      pushErr(file, line, "UP_DATE_FORMAT", `date は YYYY-MM-DD を想定しています: "${date}"`);
+      continue;
+    }
+    if (seenDates.has(date)) {
+      pushErr(file, line, "UP_DATE_DUP", `date が重複しています（主キー）: "${date}"`);
+      continue;
+    }
+    seenDates.add(date);
+  }
+}
 
 // 1) memberships.csv
 const msPairSeen = new Set(); // 重複 membership 検出用 (unit_key || '->' || person_key)
@@ -518,6 +546,13 @@ db.transaction(() => {
       PRIMARY KEY (unit_id, person_id)
     );
     CREATE INDEX idx_memberships_person ON memberships(person_id);
+
+    -- 更新履歴（date が主キー。1日1行）
+    CREATE TABLE updates (
+      date    TEXT PRIMARY KEY, -- 'YYYY-MM-DD'
+      content TEXT NOT NULL
+    );
+    CREATE INDEX idx_updates_date ON updates(date);
   `);
 
   // final_results は動的列を含めてDDLを生成
@@ -675,6 +710,13 @@ db.transaction(() => {
       score=excluded.score
   `);
 
+  const insUpdate = db.prepare(`
+    INSERT INTO updates(date, content)
+    VALUES (?, ?)
+    ON CONFLICT(date) DO UPDATE SET
+      content = excluded.content
+  `);
+
   /* ---------- データ投入（順に依存関係を満たす） ---------- */
   // competitions
   for (const r of competitions) {
@@ -692,6 +734,15 @@ db.transaction(() => {
     const lab = (r.short_label ?? "").trim() || null;
     const ttl = (r.title ?? "").trim() || null;
     insEd.run({ comp:r.comp, year:y, title:ttl, seq, date:dt, label:lab });
+  }
+
+  // updates（更新履歴）
+  // 並び順はCSV側に依存せず、表示側で date DESC にソートする。
+  for (const r of updatesCsv) {
+    const date = String(r.date ?? "").trim();
+    const content = String(r.content ?? "");
+    if (!date) continue; // バリデーションで弾いている想定だが安全側
+    insUpdate.run(date, content);
   }
 
   // comedians（初期マスタ）
