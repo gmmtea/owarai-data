@@ -185,38 +185,68 @@ type YearGroupedData = Record<string, Item[]>;
 
 // 結成日順のデータ作成（ユニットのみ、新しい順）
 const formationYearGroups: YearGroupedData = {};
+const formationUnknownGroup: Item[] = [];
+
 enriched
-  .filter(r => r.kind === "unit" && r.birth_year)
+  .filter(r => r.kind === "unit")
   .forEach(r => {
-    const year = r.birth_year!.toString();
-    if (!formationYearGroups[year]) formationYearGroups[year] = [];
-    formationYearGroups[year].push({
-      id: r.id,
-      name: r.name,
-      reading: r.reading,
-      kind: r.kind,
-      m1_rank_sort: r.m1_rank_sort,
-      koc_rank_sort: r.koc_rank_sort,
-      r1_rank_sort: r.r1_rank_sort
-    });
+    if (r.birth_year) {
+      const year = r.birth_year.toString();
+      if (!formationYearGroups[year]) formationYearGroups[year] = [];
+      formationYearGroups[year].push({
+        id: r.id,
+        name: r.name,
+        reading: r.reading,
+        kind: r.kind,
+        m1_rank_sort: r.m1_rank_sort,
+        koc_rank_sort: r.koc_rank_sort,
+        r1_rank_sort: r.r1_rank_sort
+      });
+    } else {
+      // birth_yearが未設定のユニット
+      formationUnknownGroup.push({
+        id: r.id,
+        name: r.name,
+        reading: r.reading,
+        kind: r.kind,
+        m1_rank_sort: r.m1_rank_sort,
+        koc_rank_sort: r.koc_rank_sort,
+        r1_rank_sort: r.r1_rank_sort
+      });
+    }
   });
 
 // 誕生日順のデータ作成（個人のみ、新しい順）
 const birthdayYearGroups: YearGroupedData = {};
+const birthdayUnknownGroup: Item[] = [];
+
 enriched
-  .filter(r => r.kind === "person" && r.birth_year)
+  .filter(r => r.kind === "person")
   .forEach(r => {
-    const year = r.birth_year!.toString();
-    if (!birthdayYearGroups[year]) birthdayYearGroups[year] = [];
-    birthdayYearGroups[year].push({
-      id: r.id,
-      name: r.name,
-      reading: r.reading,
-      kind: r.kind,
-      m1_rank_sort: r.m1_rank_sort,
-      koc_rank_sort: r.koc_rank_sort,
-      r1_rank_sort: r.r1_rank_sort
-    });
+    if (r.birth_year) {
+      const year = r.birth_year.toString();
+      if (!birthdayYearGroups[year]) birthdayYearGroups[year] = [];
+      birthdayYearGroups[year].push({
+        id: r.id,
+        name: r.name,
+        reading: r.reading,
+        kind: r.kind,
+        m1_rank_sort: r.m1_rank_sort,
+        koc_rank_sort: r.koc_rank_sort,
+        r1_rank_sort: r.r1_rank_sort
+      });
+    } else {
+      // birth_yearが未設定の個人
+      birthdayUnknownGroup.push({
+        id: r.id,
+        name: r.name,
+        reading: r.reading,
+        kind: r.kind,
+        m1_rank_sort: r.m1_rank_sort,
+        koc_rank_sort: r.koc_rank_sort,
+        r1_rank_sort: r.r1_rank_sort
+      });
+    }
   });
 
 // 各年のデータを名前順でソート
@@ -236,6 +266,21 @@ Object.values(birthdayYearGroups).forEach(group => {
     const c = collator.compare(ak, bk);
     return c !== 0 ? c : collator.compare(a.name, b.name);
   });
+});
+
+// 未設定グループもソート
+formationUnknownGroup.sort((a, b) => {
+  const ak = sortKey(a.reading, a.name);
+  const bk = sortKey(b.reading, b.name);
+  const c = collator.compare(ak, bk);
+  return c !== 0 ? c : collator.compare(a.name, b.name);
+});
+
+birthdayUnknownGroup.sort((a, b) => {
+  const ak = sortKey(a.reading, a.name);
+  const bk = sortKey(b.reading, b.name);
+  const c = collator.compare(ak, bk);
+  return c !== 0 ? c : collator.compare(a.name, b.name);
 });
 
 // 年を新しい順にソート
@@ -387,6 +432,27 @@ const birthdayYears = Object.keys(birthdayYearGroups).sort((a, b) => parseInt(b)
         </p>
       </section>
     ))}
+    
+    {/* 未設定グループ（結成日順） */}
+    {formationUnknownGroup.length > 0 && (
+      <section class="co-row">
+        <h2 id="formation-unknown">その他（未設定）</h2>
+        <p class="name-line">
+          {formationUnknownGroup.map((it, i) => (
+            <span
+              class="co-item"
+              data-kind={it.kind}
+              data-m1-rank={it.m1_rank_sort ?? ""}
+              data-koc-rank={it.koc_rank_sort ?? ""}
+              data-r1-rank={it.r1_rank_sort ?? ""}
+            >
+              {i > 0 && " / "}
+              <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
+            </span>
+          ))}
+        </p>
+      </section>
+    )}
   </div>
 
   <!-- 誕生日順の表示 -->
@@ -410,6 +476,27 @@ const birthdayYears = Object.keys(birthdayYearGroups).sort((a, b) => parseInt(b)
         </p>
       </section>
     ))}
+    
+    {/* 未設定グループ（誕生日順） */}
+    {birthdayUnknownGroup.length > 0 && (
+      <section class="co-row">
+        <h2 id="birthday-unknown">その他（未設定）</h2>
+        <p class="name-line">
+          {birthdayUnknownGroup.map((it, i) => (
+            <span
+              class="co-item"
+              data-kind={it.kind}
+              data-m1-rank={it.m1_rank_sort ?? ""}
+              data-koc-rank={it.koc_rank_sort ?? ""}
+              data-r1-rank={it.r1_rank_sort ?? ""}
+            >
+              {i > 0 && " / "}
+              <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
+            </span>
+          ))}
+        </p>
+      </section>
+    )}
   </div>
 </Base>
 
