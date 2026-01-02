@@ -182,7 +182,7 @@ others.sort((a, b) => {
 });
 
 /* ============================= 日付計算ユーティリティ ============================= */
-const TODAY = new Date(2026, 0, 2); // 2026年1月2日
+const TODAY = new Date(); // 現在の日付を自動取得
 
 // birth_date文字列から日付オブジェクトを作成（デフォルト補完あり）
 function parseDate(dateStr: string | null): Date | null {
@@ -520,10 +520,10 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
     <div class="co-filter-row">
       <!-- ソート順選択 -->
       <div id="sort-tabs" class="kind-tabs" data-sort="reading">
-        <span class="result-label">並び順:</span>
+        <span class="result-label">表示モード:</span>
         <button type="button" class="kind-tab is-active" data-sort="reading">五十音順</button>
-        <button type="button" class="kind-tab" data-sort="formation">結成日順</button>
-        <button type="button" class="kind-tab" data-sort="birthday">誕生日順</button>
+        <button type="button" class="kind-tab" data-sort="formation">ユニット結成年順</button>
+        <button type="button" class="kind-tab" data-sort="birthday">個人年齢順</button>
       </div>
     </div>
     
@@ -536,8 +536,8 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
       </div>
     </div>
     
-    <div class="co-filter-row">
-      <!-- 種別タブ -->
+    <div class="co-filter-row" id="kind-filter-row">
+      <!-- 種別タブ（五十音順時のみ表示） -->
       <div id="kind-tabs" class="kind-tabs" data-kind="all">
         <button type="button" class="kind-tab is-active" data-kind="all">すべて</button>
         <button type="button" class="kind-tab" data-kind="unit">ユニット</button>
@@ -948,7 +948,13 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
       }
     });
     
-    // 基準選択UIの表示/非表示
+    // 種別選択UIの表示/非表示（五十音順のみ表示）
+    const kindFilterRow = document.getElementById('kind-filter-row');
+    if (kindFilterRow) {
+      kindFilterRow.style.display = (sortType === 'reading') ? 'block' : 'none';
+    }
+    
+    // 基準選択UIの表示/非表示（年ベース順のみ表示）
     const baseFilterRow = document.getElementById('base-filter-row');
     if (baseFilterRow) {
       baseFilterRow.style.display = (sortType === 'reading') ? 'none' : 'block';
@@ -961,6 +967,21 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
     if (sortType === 'formation' || sortType === 'birthday') {
       showBaseView(sortType, baseType);
     }
+  }
+
+  // 表示モード切り替え時のkind値自動調整
+  function adjustKindForSortType(sortType, currentKind) {
+    if (sortType === 'reading') {
+      // 五十音順：現在の値を維持
+      return currentKind;
+    } else if (sortType === 'formation') {
+      // 結成年順：ユニットのみ表示可能なので'unit'に固定
+      return 'unit';
+    } else if (sortType === 'birthday') {
+      // 誕生日順：個人のみ表示可能なので'person'に固定
+      return 'person';
+    }
+    return currentKind;
   }
 
   // 基準ボタンのラベルを更新
@@ -1219,8 +1240,12 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
     }
 
     wireTabs(sortWrap, 'sort', (v) => {
-      state = { ...state, sort: v };
+      // 新しいソートタイプに適したkind値に自動調整
+      const adjustedKind = adjustKindForSortType(v, state.kind);
+      
+      state = { ...state, sort: v, kind: adjustedKind };
       setActiveTab(sortWrap, 'sort', v);
+      setActiveTab(kindWrap, 'kind', adjustedKind);  // kind tabも更新
       showSortView(v, state.base);
       writeStateToUrlAndStorage(state);
       applyFilter(state);
