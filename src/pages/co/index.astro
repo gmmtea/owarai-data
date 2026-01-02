@@ -1,6 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { listComediansCanonicalOnlyWithRelatedRanks as listComediansCanonicalOnly } from "../../lib/queries";
+import { listComediansCanonicalOnlyWithBirthDate } from "../../lib/queries";
 
 const base = import.meta.env.BASE_URL;
 
@@ -82,7 +82,7 @@ const rowSubs: Record<string, string[]> = {
 };
 
 /* ============================= データ取得と整形 ============================= */
-const raw = listComediansCanonicalOnly();
+const raw = listComediansCanonicalOnlyWithBirthDate();
 
 // 1) 読みを付与
 const enriched = raw.map(r => {
@@ -178,6 +178,69 @@ others.sort((a, b) => {
   const c = collator.compare(ak, bk);
   return c !== 0 ? c : collator.compare(a.name, b.name);
 });
+
+/* ============================= 年ごとのソート機能 ============================= */
+// 年別グループ化（結成日順・誕生日順）
+type YearGroupedData = Record<string, Item[]>;
+
+// 結成日順のデータ作成（ユニットのみ、新しい順）
+const formationYearGroups: YearGroupedData = {};
+enriched
+  .filter(r => r.kind === "unit" && r.birth_year)
+  .forEach(r => {
+    const year = r.birth_year!.toString();
+    if (!formationYearGroups[year]) formationYearGroups[year] = [];
+    formationYearGroups[year].push({
+      id: r.id,
+      name: r.name,
+      reading: r.reading,
+      kind: r.kind,
+      m1_rank_sort: r.m1_rank_sort,
+      koc_rank_sort: r.koc_rank_sort,
+      r1_rank_sort: r.r1_rank_sort
+    });
+  });
+
+// 誕生日順のデータ作成（個人のみ、新しい順）
+const birthdayYearGroups: YearGroupedData = {};
+enriched
+  .filter(r => r.kind === "person" && r.birth_year)
+  .forEach(r => {
+    const year = r.birth_year!.toString();
+    if (!birthdayYearGroups[year]) birthdayYearGroups[year] = [];
+    birthdayYearGroups[year].push({
+      id: r.id,
+      name: r.name,
+      reading: r.reading,
+      kind: r.kind,
+      m1_rank_sort: r.m1_rank_sort,
+      koc_rank_sort: r.koc_rank_sort,
+      r1_rank_sort: r.r1_rank_sort
+    });
+  });
+
+// 各年のデータを名前順でソート
+Object.values(formationYearGroups).forEach(group => {
+  group.sort((a, b) => {
+    const ak = sortKey(a.reading, a.name);
+    const bk = sortKey(b.reading, b.name);
+    const c = collator.compare(ak, bk);
+    return c !== 0 ? c : collator.compare(a.name, b.name);
+  });
+});
+
+Object.values(birthdayYearGroups).forEach(group => {
+  group.sort((a, b) => {
+    const ak = sortKey(a.reading, a.name);
+    const bk = sortKey(b.reading, b.name);
+    const c = collator.compare(ak, bk);
+    return c !== 0 ? c : collator.compare(a.name, b.name);
+  });
+});
+
+// 年を新しい順にソート
+const formationYears = Object.keys(formationYearGroups).sort((a, b) => parseInt(b) - parseInt(a));
+const birthdayYears = Object.keys(birthdayYearGroups).sort((a, b) => parseInt(b) - parseInt(a));
 ---
 
 <Base title="芸人一覧">
@@ -192,6 +255,16 @@ others.sort((a, b) => {
   </h1>
 
   <div class="co-filter">
+    <div class="co-filter-row">
+      <!-- ソート順選択 -->
+      <div id="sort-tabs" class="kind-tabs" data-sort="reading">
+        <span class="result-label">並び順:</span>
+        <button type="button" class="kind-tab is-active" data-sort="reading">五十音順</button>
+        <button type="button" class="kind-tab" data-sort="formation">結成日順</button>
+        <button type="button" class="kind-tab" data-sort="birthday">誕生日順</button>
+      </div>
+    </div>
+    
     <div class="co-filter-row">
       <!-- 種別タブ -->
       <div id="kind-tabs" class="kind-tabs" data-kind="all">
@@ -236,59 +309,108 @@ others.sort((a, b) => {
     </div>
   </div>
 
-  {/* 表示：サブキー1文字を太字＋コロンで先頭に置く */}
-  {groups.map((g) => {
-    const row = rowBuckets[g.key];
-    const nonEmptySubs = Object.entries(row).filter(([, arr]) => arr.length > 0);
+  <!-- 五十音順の表示 -->
+  <div id="reading-view">
+    {/* 表示：サブキー1文字を太字＋コロンで先頭に置く */}
+    {groups.map((g) => {
+      const row = rowBuckets[g.key];
+      const nonEmptySubs = Object.entries(row).filter(([, arr]) => arr.length > 0);
 
-    // この行に1件も無いなら、見出しごと出さない
-    if (nonEmptySubs.length === 0) return null;
+      // この行に1件も無いなら、見出しごと出さない
+      if (nonEmptySubs.length === 0) return null;
 
-    return (
-      <section class="co-row" data-row-key={g.key}>
-        <h2 id={`row-${g.key}`}>{g.key}行</h2>
+      return (
+        <section class="co-row" data-row-key={g.key}>
+          <h2 id={`row-${g.key}`}>{g.key}行</h2>
 
-        {nonEmptySubs.map(([sub, arr]) => (
-          <p class="name-line">
-            <strong>{sub}</strong>:{" "}
-            {arr.map((it, i) => (
-              <span
-                class="co-item"
-                data-kind={it.kind}
-                data-m1-rank={it.m1_rank_sort ?? ""}
-                data-koc-rank={it.koc_rank_sort ?? ""}
-                data-r1-rank={it.r1_rank_sort ?? ""}
-              >
-                {i > 0 && " / "}
-                <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
-              </span>
-            ))}
-          </p>
-        ))}
+          {nonEmptySubs.map(([sub, arr]) => (
+            <p class="name-line">
+              <strong>{sub}</strong>:{" "}
+              {arr.map((it, i) => (
+                <span
+                  class="co-item"
+                  data-kind={it.kind}
+                  data-m1-rank={it.m1_rank_sort ?? ""}
+                  data-koc-rank={it.koc_rank_sort ?? ""}
+                  data-r1-rank={it.r1_rank_sort ?? ""}
+                >
+                  {i > 0 && " / "}
+                  <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
+                </span>
+              ))}
+            </p>
+          ))}
+        </section>
+      );
+    })}
+
+    {/* その他芸人（ラテン文字・漢字のみ等） */}
+    {others.length > 0 && (
+      <section class="co-row-section" data-row="others">
+        <h2>その他</h2>
+        <p class="name-line">
+          {others.map((it, i) => (
+            <span
+              class="co-item"
+              data-kind={it.kind}
+              data-m1-rank={it.m1_rank_sort ?? ""}
+              data-koc-rank={it.koc_rank_sort ?? ""}
+              data-r1-rank={it.r1_rank_sort ?? ""}
+            >
+              {i > 0 && " / "}
+              <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
+            </span>
+          ))}
+        </p>
       </section>
-    );
-  })}
+    )}
+  </div>
 
-  {/* その他芸人（ラテン文字・漢字のみ等） */}
-  {others.length > 0 && (
-    <section class="co-row-section" data-row="others">
-      <h2>その他</h2>
-      <p class="name-line">
-        {others.map((it, i) => (
-          <span
-            class="co-item"
-            data-kind={it.kind}
-            data-m1-rank={it.m1_rank_sort ?? ""}
-            data-koc-rank={it.koc_rank_sort ?? ""}
-            data-r1-rank={it.r1_rank_sort ?? ""}
-          >
-            {i > 0 && " / "}
-            <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
-          </span>
-        ))}
-      </p>
-    </section>
-  )}
+  <!-- 結成日順の表示 -->
+  <div id="formation-view" style="display: none;">
+    {formationYears.map(year => (
+      <section class="co-row">
+        <h2 id={`formation-${year}`}>{year}年結成</h2>
+        <p class="name-line">
+          {formationYearGroups[year].map((it, i) => (
+            <span
+              class="co-item"
+              data-kind={it.kind}
+              data-m1-rank={it.m1_rank_sort ?? ""}
+              data-koc-rank={it.koc_rank_sort ?? ""}
+              data-r1-rank={it.r1_rank_sort ?? ""}
+            >
+              {i > 0 && " / "}
+              <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
+            </span>
+          ))}
+        </p>
+      </section>
+    ))}
+  </div>
+
+  <!-- 誕生日順の表示 -->
+  <div id="birthday-view" style="display: none;">
+    {birthdayYears.map(year => (
+      <section class="co-row">
+        <h2 id={`birthday-${year}`}>{year}年生まれ</h2>
+        <p class="name-line">
+          {birthdayYearGroups[year].map((it, i) => (
+            <span
+              class="co-item"
+              data-kind={it.kind}
+              data-m1-rank={it.m1_rank_sort ?? ""}
+              data-koc-rank={it.koc_rank_sort ?? ""}
+              data-r1-rank={it.r1_rank_sort ?? ""}
+            >
+              {i > 0 && " / "}
+              <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
+            </span>
+          ))}
+        </p>
+      </section>
+    ))}
+  </div>
 </Base>
 
 <style>
@@ -362,14 +484,27 @@ others.sort((a, b) => {
   const STORAGE_KEY = 'co.index.filter';
   const KIND_ALLOWED = ['all', 'unit', 'person'];
   const RESULT_ALLOWED = ['any', 'quarter', 'semi', 'final', 'win'];
+  const SORT_ALLOWED = ['reading', 'formation', 'birthday'];
 
   const nameLines = Array.from(
     document.querySelectorAll('.name-line')
   );
+  // 読み仮名ビューのアイテムのみ（メインのフィルタリング対象）
   const coItems = Array.from(
-    document.querySelectorAll('.co-item')
+    document.querySelectorAll('#reading-view .co-item')
   );
   const countEl = document.getElementById('co-count');
+
+  // ソート表示の切り替え
+  function showSortView(sortType) {
+    const views = ['reading-view', 'formation-view', 'birthday-view'];
+    views.forEach(id => {
+      const view = document.getElementById(id);
+      if (view) {
+        view.style.display = (id === `${sortType}-view`) ? 'block' : 'none';
+      }
+    });
+  }
 
   function parseRankSort(v) {
     if (v == null || v === '') return null;
@@ -396,23 +531,26 @@ others.sort((a, b) => {
   }
 
   function readStateFromUrlAndStorage() {
-    const def = { kind: 'all', m1: 'any', koc: 'any', r1: 'any' };
+    const def = { sort: 'reading', kind: 'all', m1: 'any', koc: 'any', r1: 'any' };
 
     try {
       const url = new URL(location.href);
+      const sortQ = url.searchParams.get('sort');
       const kindQ = url.searchParams.get('kind');
       const m1Q   = url.searchParams.get('m1');
       const kocQ  = url.searchParams.get('koc');
       const r1Q   = url.searchParams.get('r1');
 
       const fromUrl = {
+        sort: SORT_ALLOWED.includes(sortQ || '') ? sortQ : null,
         kind: KIND_ALLOWED.includes(kindQ || '') ? kindQ : null,
         m1:   RESULT_ALLOWED.includes(m1Q || '') ? m1Q   : null,
         koc:  RESULT_ALLOWED.includes(kocQ || '') ? kocQ : null,
         r1:   RESULT_ALLOWED.includes(r1Q || '') ? r1Q   : null,
       };
-      if (fromUrl.kind || fromUrl.m1 || fromUrl.koc || fromUrl.r1) {
+      if (fromUrl.sort || fromUrl.kind || fromUrl.m1 || fromUrl.koc || fromUrl.r1) {
         return {
+          sort: fromUrl.sort || def.sort,
           kind: fromUrl.kind || def.kind,
           m1:   fromUrl.m1   || def.m1,
           koc:  fromUrl.koc  || def.koc,
@@ -425,11 +563,12 @@ others.sort((a, b) => {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
+        const sort = SORT_ALLOWED.includes(parsed.sort) ? parsed.sort : def.sort;
         const kind = KIND_ALLOWED.includes(parsed.kind) ? parsed.kind : def.kind;
         const m1   = RESULT_ALLOWED.includes(parsed.m1) ? parsed.m1   : def.m1;
         const koc  = RESULT_ALLOWED.includes(parsed.koc) ? parsed.koc : def.koc;
         const r1   = RESULT_ALLOWED.includes(parsed.r1) ? parsed.r1 : def.r1;
-        return { kind, m1, koc, r1 };
+        return { sort, kind, m1, koc, r1 };
       }
     } catch (_) {}
 
@@ -439,6 +578,7 @@ others.sort((a, b) => {
   function writeStateToUrlAndStorage(state) {
     try {
       const url = new URL(location.href);
+      url.searchParams.set('sort', state.sort);
       url.searchParams.set('kind', state.kind);
       url.searchParams.set('m1',   state.m1);
       url.searchParams.set('koc',  state.koc);
@@ -473,9 +613,24 @@ others.sort((a, b) => {
     });
   }
 
-  function updateCount() {
+  function updateCount(currentSort = 'reading') {
     if (!countEl) return;
-    const visibleCount = coItems.filter(el => !el.hasAttribute('hidden')).length;
+    
+    let visibleCount = 0;
+    
+    if (currentSort === 'reading') {
+      // 読み仮名ビューの場合
+      visibleCount = coItems.filter(el => !el.hasAttribute('hidden')).length;
+    } else {
+      // 年ごとビューの場合
+      const currentViewId = `${currentSort}-view`;
+      const currentView = document.getElementById(currentViewId);
+      if (currentView) {
+        const viewItems = Array.from(currentView.querySelectorAll('.co-item'));
+        visibleCount = viewItems.filter(el => !el.hasAttribute('hidden')).length;
+      }
+    }
+    
     countEl.textContent = `（${visibleCount}件）`;
   }
 
@@ -489,7 +644,29 @@ others.sort((a, b) => {
   }
 
   function applyFilter(state) {
+    // 読み仮名ビューのフィルタリング
     coItems.forEach(el => {
+      const itemKind = el.getAttribute('data-kind') || 'unit';
+      const m1Rank   = parseRankSort(el.getAttribute('data-m1-rank'));
+      const kocRank  = parseRankSort(el.getAttribute('data-koc-rank'));
+      const r1Rank   = parseRankSort(el.getAttribute('data-r1-rank'));
+
+      const okKind = matchKind(itemKind, state.kind);
+      const okM1   = matchResultFilter(m1Rank, state.m1);
+      const okKoc  = matchResultFilter(kocRank, state.koc);
+      const okR1   = matchResultFilter(r1Rank, state.r1);
+
+      const show = okKind && okM1 && okKoc && okR1;
+      if (show) {
+        el.removeAttribute('hidden');
+      } else {
+        el.setAttribute('hidden', 'true');
+      }
+    });
+
+    // 年ごとビューのフィルタリング
+    const yearViewItems = Array.from(document.querySelectorAll('#formation-view .co-item, #birthday-view .co-item'));
+    yearViewItems.forEach(el => {
       const itemKind = el.getAttribute('data-kind') || 'unit';
       const m1Rank   = parseRankSort(el.getAttribute('data-m1-rank'));
       const kocRank  = parseRankSort(el.getAttribute('data-koc-rank'));
@@ -510,7 +687,7 @@ others.sort((a, b) => {
 
     updateSeparatorsAndEmptyLines();
     updateRowSectionVisibility();
-    updateCount();
+    updateCount(state.sort);
   }
 
   function setActiveTab(container, attrName, value) {
@@ -523,6 +700,7 @@ others.sort((a, b) => {
   }
 
   function syncTabs(state) {
+    setActiveTab(document.getElementById('sort-tabs'), 'sort', state.sort);
     setActiveTab(document.getElementById('kind-tabs'), 'kind', state.kind);
     setActiveTab(document.getElementById('m1-tabs'),   'm1',   state.m1);
     setActiveTab(document.getElementById('koc-tabs'),  'koc',  state.koc);
@@ -530,15 +708,17 @@ others.sort((a, b) => {
   }
 
   function setupFilter() {
+    const sortWrap = document.getElementById('sort-tabs');
     const kindWrap = document.getElementById('kind-tabs');
     const m1Wrap   = document.getElementById('m1-tabs');
     const kocWrap  = document.getElementById('koc-tabs');
     const r1Wrap   = document.getElementById('r1-tabs');
-    if (!kindWrap || !m1Wrap || !kocWrap || !r1Wrap) return;
+    if (!sortWrap || !kindWrap || !m1Wrap || !kocWrap || !r1Wrap) return;
 
     let state = readStateFromUrlAndStorage();
     syncTabs(state);
     applyFilter(state);
+    showSortView(state.sort);
 
     function wireTabs(container, attrName, onChange) {
       const buttons = Array.from(container.querySelectorAll('.kind-tab'));
@@ -550,6 +730,14 @@ others.sort((a, b) => {
         });
       });
     }
+
+    wireTabs(sortWrap, 'sort', (v) => {
+      state = { ...state, sort: v };
+      setActiveTab(sortWrap, 'sort', v);
+      showSortView(v);
+      writeStateToUrlAndStorage(state);
+      applyFilter(state);
+    });
 
     wireTabs(kindWrap, 'kind', (v) => {
       state = { ...state, kind: v };
