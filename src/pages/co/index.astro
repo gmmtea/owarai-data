@@ -1,6 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { listComediansCanonicalOnlyWithBirthDate } from "../../lib/queries";
+import { listComediansCanonicalOnlyWithRelatedRanksAndBirthDate } from "../../lib/queries";
 
 const base = import.meta.env.BASE_URL;
 
@@ -82,7 +82,7 @@ const rowSubs: Record<string, string[]> = {
 };
 
 /* ============================= データ取得と整形 ============================= */
-const raw = listComediansCanonicalOnlyWithBirthDate();
+const raw = listComediansCanonicalOnlyWithRelatedRanksAndBirthDate();
 
 // 1) 読みを付与
 const enriched = raw.map(r => {
@@ -106,6 +106,8 @@ type Item = {
   m1_rank_sort: number | null;   // 例: 1, 2, 4, 50, 100, 500... / null
   koc_rank_sort: number | null;
   r1_rank_sort: number | null;
+  birth_date?: string | null;    // 時系列ソート用
+  birth_year?: number | null;    // 時系列ソート用
 };
 type RowBuckets = Record<string, Record<string, Item[]>>;
 const rowBuckets: RowBuckets = {};
@@ -179,18 +181,145 @@ others.sort((a, b) => {
   return c !== 0 ? c : collator.compare(a.name, b.name);
 });
 
+/* ============================= 日付計算ユーティリティ ============================= */
+const TODAY = new Date(2026, 0, 2); // 2026年1月2日
+
+// birth_date文字列から日付オブジェクトを作成（デフォルト補完あり）
+function parseDate(dateStr: string | null): Date | null {
+  if (!dateStr || dateStr.trim() === '') return null;
+  
+  const normalized = dateStr.replace(/年|月|日/g, '/').replace(/\/+/g, '/').replace(/\/$/, '');
+  const parts = normalized.split('/').map(p => parseInt(p.trim()));
+  
+  if (parts.length === 0 || isNaN(parts[0])) return null;
+  
+  const year = parts[0];
+  const month = parts.length >= 2 && !isNaN(parts[1]) ? parts[1] : 4; // デフォルト4月
+  const day = parts.length >= 3 && !isNaN(parts[2]) ? parts[2] : 1;   // デフォルト1日
+  
+  return new Date(year, month - 1, day); // monthは0ベース
+}
+
+// 今日基準での経過年数計算
+function getYearsFromToday(date: Date): number {
+  const diffMs = TODAY.getTime() - date.getTime();
+  const diffYears = diffMs / (1000 * 60 * 60 * 24 * 365.25);
+  return Math.floor(diffYears);
+}
+
+// 年度基準での経過年数計算（結成日は1月基準、誕生日は4月基準）
+function getYearsFromYearBase(date: Date, isFormation: boolean): number {
+  if (isFormation) {
+    // 結成日は1月基準
+    const baseMonth = 0; // 1月（0ベース）
+    const baseDay = 1;   // 1月1日
+    
+    let currentYear = TODAY.getFullYear();
+    let currentYearBase = new Date(currentYear, baseMonth, baseDay);
+    
+    // 今日がまだ今年の1月1日前なら、去年基準に
+    if (TODAY < currentYearBase) {
+      currentYear--;
+      currentYearBase = new Date(currentYear, baseMonth, baseDay);
+    }
+    
+    // 対象日が属する年を計算
+    let targetYear = date.getFullYear();
+    let targetYearBase = new Date(targetYear, baseMonth, baseDay);
+    
+    if (date < targetYearBase) {
+      targetYear--;
+    }
+    
+    return currentYear - targetYear;
+  } else {
+    // 誕生日は4月基準（従来通り）
+    const baseMonth = 3; // 4月（0ベース）
+    const baseDay = 2;   // 4月2日
+    
+    let currentYear = TODAY.getFullYear();
+    let currentAprilBase = new Date(currentYear, baseMonth, baseDay);
+    
+    // 今日がまだ今年の基準日前なら、去年基準に
+    if (TODAY < currentAprilBase) {
+      currentYear--;
+      currentAprilBase = new Date(currentYear, baseMonth, baseDay);
+    }
+    
+    // 対象日が属する年度を計算
+    let targetYear = date.getFullYear();
+    let targetAprilBase = new Date(targetYear, baseMonth, baseDay);
+    
+    if (date < targetAprilBase) {
+      targetYear--;
+    }
+    
+    return currentYear - targetYear;
+  }
+}
+
+// 年齢・経過年数の表示文字列生成
+function formatYearsLabel(years: number, baseType: 'today' | 'april', sortType: 'formation' | 'birthday'): string {
+  if (sortType === 'formation') {
+    return baseType === 'today' 
+      ? `現在結成${years}年`
+      : `今年結成${years}年`;
+  } else {
+    return baseType === 'today'
+      ? `現在${years}歳`
+      : `今年度${years}歳`;
+  }
+}
+
+// 期間表示の生成
+function formatPeriodLabel(years: number, baseType: 'today' | 'april', sortType: 'formation' | 'birthday'): string {
+  const currentYear = TODAY.getFullYear();
+  const currentMonth = TODAY.getMonth() + 1;
+  const currentDay = TODAY.getDate();
+  
+  if (baseType === 'today') {
+    const endYear = currentYear - years;
+    const endMonth = currentMonth;
+    const endDay = currentDay;
+    
+    // 1年前の日付を計算
+    const startYear = endYear - 1;
+    const startMonth = currentMonth;
+    const startDay = currentDay + 1; // 翌日から
+    
+    // 日付調整
+    const startDate = new Date(startYear, startMonth - 1, startDay);
+    const endDate = new Date(endYear, endMonth - 1, endDay);
+    
+    return `（${startDate.getFullYear()}年${startDate.getMonth() + 1}月${startDate.getDate()}日〜${endDate.getFullYear()}年${endDate.getMonth() + 1}月${endDate.getDate()}日${sortType === 'formation' ? '結成' : '生まれ'}）`;
+  } else {
+    const endYear = currentYear - years;
+    const startYear = endYear - 1;
+    if (sortType === 'formation') {
+      // 結成日は1月基準
+      return `（${startYear}年1月1日〜${endYear}年12月31日結成）`;
+    } else {
+      // 誕生日は4月基準（従来通り）
+      return `（${startYear}年4月2日〜${endYear}年4月1日生まれ）`;
+    }
+  }
+}
+
 /* ============================= 年ごとのソート機能 ============================= */
 // 年別グループ化（結成日順・誕生日順）
 type YearGroupedData = Record<string, Item[]>;
 
 // 結成日順のデータ作成（ユニットのみ、新しい順）
-const formationYearGroups: YearGroupedData = {};
+const formationYearGroups: YearGroupedData = {}; // 旧形式（年ベース）
+const formationTodayGroups: Record<string, Item[]> = {}; // 今日基準
+const formationAprilGroups: Record<string, Item[]> = {}; // 4月基準
 const formationUnknownGroup: Item[] = [];
 
 enriched
   .filter(r => r.kind === "unit")
   .forEach(r => {
     if (r.birth_year) {
+      // 旧形式（年ベース）
       const year = r.birth_year.toString();
       if (!formationYearGroups[year]) formationYearGroups[year] = [];
       formationYearGroups[year].push({
@@ -200,8 +329,38 @@ enriched
         kind: r.kind,
         m1_rank_sort: r.m1_rank_sort,
         koc_rank_sort: r.koc_rank_sort,
-        r1_rank_sort: r.r1_rank_sort
+        r1_rank_sort: r.r1_rank_sort,
+        birth_date: r.birth_date,
+        birth_year: r.birth_year
       });
+
+      // 新形式（今日基準・年度基準）
+      const date = parseDate(r.birth_date);
+      if (date) {
+        const todayYears = getYearsFromToday(date);
+        const yearBaseYears = getYearsFromYearBase(date, true);
+        
+        const todayKey = todayYears.toString();
+        const yearBaseKey = yearBaseYears.toString();
+        
+        if (!formationTodayGroups[todayKey]) formationTodayGroups[todayKey] = [];
+        if (!formationAprilGroups[yearBaseKey]) formationAprilGroups[yearBaseKey] = [];
+        
+        const item = {
+          id: r.id,
+          name: r.name,
+          reading: r.reading,
+          kind: r.kind,
+          m1_rank_sort: r.m1_rank_sort,
+          koc_rank_sort: r.koc_rank_sort,
+          r1_rank_sort: r.r1_rank_sort,
+          birth_date: r.birth_date,
+          birth_year: r.birth_year
+        };
+        
+        formationTodayGroups[todayKey].push(item);
+        formationAprilGroups[yearBaseKey].push(item);
+      }
     } else {
       // birth_yearが未設定のユニット
       formationUnknownGroup.push({
@@ -217,13 +376,16 @@ enriched
   });
 
 // 誕生日順のデータ作成（個人のみ、新しい順）
-const birthdayYearGroups: YearGroupedData = {};
+const birthdayYearGroups: YearGroupedData = {}; // 旧形式（年ベース）
+const birthdayTodayGroups: Record<string, Item[]> = {}; // 今日基準
+const birthdayAprilGroups: Record<string, Item[]> = {}; // 4月基準（4/2基準）
 const birthdayUnknownGroup: Item[] = [];
 
 enriched
   .filter(r => r.kind === "person")
   .forEach(r => {
     if (r.birth_year) {
+      // 旧形式（年ベース）
       const year = r.birth_year.toString();
       if (!birthdayYearGroups[year]) birthdayYearGroups[year] = [];
       birthdayYearGroups[year].push({
@@ -235,6 +397,32 @@ enriched
         koc_rank_sort: r.koc_rank_sort,
         r1_rank_sort: r.r1_rank_sort
       });
+
+      // 新形式（今日基準・年度基準）
+      const date = parseDate(r.birth_date);
+      if (date) {
+        const todayYears = getYearsFromToday(date);
+        const yearBaseYears = getYearsFromYearBase(date, false);
+        
+        const todayKey = todayYears.toString();
+        const yearBaseKey = yearBaseYears.toString();
+        
+        if (!birthdayTodayGroups[todayKey]) birthdayTodayGroups[todayKey] = [];
+        if (!birthdayAprilGroups[yearBaseKey]) birthdayAprilGroups[yearBaseKey] = [];
+        
+        const item = {
+          id: r.id,
+          name: r.name,
+          reading: r.reading,
+          kind: r.kind,
+          m1_rank_sort: r.m1_rank_sort,
+          koc_rank_sort: r.koc_rank_sort,
+          r1_rank_sort: r.r1_rank_sort
+        };
+        
+        birthdayTodayGroups[todayKey].push(item);
+        birthdayAprilGroups[yearBaseKey].push(item);
+      }
     } else {
       // birth_yearが未設定の個人
       birthdayUnknownGroup.push({
@@ -249,22 +437,45 @@ enriched
     }
   });
 
-// 各年のデータを名前順でソート
-Object.values(formationYearGroups).forEach(group => {
-  group.sort((a, b) => {
-    const ak = sortKey(a.reading, a.name);
-    const bk = sortKey(b.reading, b.name);
-    const c = collator.compare(ak, bk);
-    return c !== 0 ? c : collator.compare(a.name, b.name);
+// 各年のデータを時系列順でソート（年ごとビューでは古い順、新形式のみ）
+// 時系列ソート関数（新しい順）
+function sortByChronological(a: Item, b: Item): number {
+  const dateA = parseDate(a.birth_date || null);
+  const dateB = parseDate(b.birth_date || null);
+  
+  // 日付が両方ある場合は日付順（新しい順）
+  if (dateA && dateB) {
+    const diff = dateB.getTime() - dateA.getTime();
+    if (diff !== 0) return diff;
+  }
+  
+  // 日付が片方のみある場合は、ある方を前に
+  if (dateA && !dateB) return -1;
+  if (!dateA && dateB) return 1;
+  
+  // 両方ない場合、または同じ日付の場合は名前順
+  const ak = sortKey(a.reading, a.name);
+  const bk = sortKey(b.reading, b.name);
+  const c = collator.compare(ak, bk);
+  return c !== 0 ? c : collator.compare(a.name, b.name);
+}
+
+// 新形式（今日基準・4月基準）は時系列順でソート
+[formationTodayGroups, formationAprilGroups, birthdayTodayGroups, birthdayAprilGroups].forEach(groups => {
+  Object.values(groups).forEach(group => {
+    group.sort(sortByChronological);
   });
 });
 
-Object.values(birthdayYearGroups).forEach(group => {
-  group.sort((a, b) => {
-    const ak = sortKey(a.reading, a.name);
-    const bk = sortKey(b.reading, b.name);
-    const c = collator.compare(ak, bk);
-    return c !== 0 ? c : collator.compare(a.name, b.name);
+// 旧形式（年ベース）は名前順でソート（互換性のため）
+[formationYearGroups, birthdayYearGroups].forEach(groups => {
+  Object.values(groups).forEach(group => {
+    group.sort((a, b) => {
+      const ak = sortKey(a.reading, a.name);
+      const bk = sortKey(b.reading, b.name);
+      const c = collator.compare(ak, bk);
+      return c !== 0 ? c : collator.compare(a.name, b.name);
+    });
   });
 });
 
@@ -283,9 +494,15 @@ birthdayUnknownGroup.sort((a, b) => {
   return c !== 0 ? c : collator.compare(a.name, b.name);
 });
 
-// 年を新しい順にソート
+// 年を新しい順にソート（旧形式）
 const formationYears = Object.keys(formationYearGroups).sort((a, b) => parseInt(b) - parseInt(a));
 const birthdayYears = Object.keys(birthdayYearGroups).sort((a, b) => parseInt(b) - parseInt(a));
+
+// 年代キーを新しい順にソート（新形式）
+const formationTodayYears = Object.keys(formationTodayGroups).sort((a, b) => parseInt(a) - parseInt(b));
+const formationAprilYears = Object.keys(formationAprilGroups).sort((a, b) => parseInt(a) - parseInt(b));
+const birthdayTodayYears = Object.keys(birthdayTodayGroups).sort((a, b) => parseInt(a) - parseInt(b));
+const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parseInt(a) - parseInt(b));
 ---
 
 <Base title="芸人一覧">
@@ -307,6 +524,15 @@ const birthdayYears = Object.keys(birthdayYearGroups).sort((a, b) => parseInt(b)
         <button type="button" class="kind-tab is-active" data-sort="reading">五十音順</button>
         <button type="button" class="kind-tab" data-sort="formation">結成日順</button>
         <button type="button" class="kind-tab" data-sort="birthday">誕生日順</button>
+      </div>
+    </div>
+    
+    <div class="co-filter-row" id="base-filter-row" style="display: none;">
+      <!-- 基準選択（年ごとソート時のみ表示） -->
+      <div id="base-tabs" class="kind-tabs" data-base="today">
+        <span class="result-label">基準:</span>
+        <button type="button" class="kind-tab is-active" data-base="today">今日基準</button>
+        <button type="button" class="kind-tab" data-base="april">4月基準</button>
       </div>
     </div>
     
@@ -413,90 +639,212 @@ const birthdayYears = Object.keys(birthdayYearGroups).sort((a, b) => parseInt(b)
 
   <!-- 結成日順の表示 -->
   <div id="formation-view" style="display: none;">
-    {formationYears.map(year => (
-      <section class="co-row">
-        <h2 id={`formation-${year}`}>{year}年結成</h2>
-        <p class="name-line">
-          {formationYearGroups[year].map((it, i) => (
-            <span
-              class="co-item"
-              data-kind={it.kind}
-              data-m1-rank={it.m1_rank_sort ?? ""}
-              data-koc-rank={it.koc_rank_sort ?? ""}
-              data-r1-rank={it.r1_rank_sort ?? ""}
-            >
-              {i > 0 && " / "}
-              <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
-            </span>
-          ))}
-        </p>
-      </section>
-    ))}
-    
-    {/* 未設定グループ（結成日順） */}
-    {formationUnknownGroup.length > 0 && (
-      <section class="co-row">
-        <h2 id="formation-unknown">その他（未設定）</h2>
-        <p class="name-line">
-          {formationUnknownGroup.map((it, i) => (
-            <span
-              class="co-item"
-              data-kind={it.kind}
-              data-m1-rank={it.m1_rank_sort ?? ""}
-              data-koc-rank={it.koc_rank_sort ?? ""}
-              data-r1-rank={it.r1_rank_sort ?? ""}
-            >
-              {i > 0 && " / "}
-              <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
-            </span>
-          ))}
-        </p>
-      </section>
-    )}
+    <!-- 今日基準表示 -->
+    <div id="formation-today" style="display: block;">
+      {formationTodayYears.map(yearsKey => {
+        const years = parseInt(yearsKey);
+        const group = formationTodayGroups[yearsKey];
+        return (
+          <section class="co-row">
+            <h2 id={`formation-today-${yearsKey}`}>
+              {formatYearsLabel(years, 'today', 'formation')}
+              <span class="period-label">{formatPeriodLabel(years, 'today', 'formation')}</span>
+            </h2>
+            <p class="name-line">
+              {group.map((it, i) => (
+                <span
+                  class="co-item"
+                  data-kind={it.kind}
+                  data-m1-rank={it.m1_rank_sort ?? ""}
+                  data-koc-rank={it.koc_rank_sort ?? ""}
+                  data-r1-rank={it.r1_rank_sort ?? ""}
+                >
+                  {i > 0 && " / "}
+                  <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
+                </span>
+              ))}
+            </p>
+          </section>
+        );
+      })}
+      
+      {/* 未設定グループ（結成日・今日基準） */}
+      {formationUnknownGroup.length > 0 && (
+        <section class="co-row">
+          <h2 id="formation-today-unknown">その他（未設定）</h2>
+          <p class="name-line">
+            {formationUnknownGroup.map((it, i) => (
+              <span
+                class="co-item"
+                data-kind={it.kind}
+                data-m1-rank={it.m1_rank_sort ?? ""}
+                data-koc-rank={it.koc_rank_sort ?? ""}
+                data-r1-rank={it.r1_rank_sort ?? ""}
+              >
+                {i > 0 && " / "}
+                <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
+              </span>
+            ))}
+          </p>
+        </section>
+      )}
+    </div>
+
+    <!-- 4月基準表示 -->
+    <div id="formation-april" style="display: none;">
+      {formationAprilYears.map(yearsKey => {
+        const years = parseInt(yearsKey);
+        const group = formationAprilGroups[yearsKey];
+        return (
+          <section class="co-row">
+            <h2 id={`formation-april-${yearsKey}`}>
+              {formatYearsLabel(years, 'april', 'formation')}
+              <span class="period-label">{formatPeriodLabel(years, 'april', 'formation')}</span>
+            </h2>
+            <p class="name-line">
+              {group.map((it, i) => (
+                <span
+                  class="co-item"
+                  data-kind={it.kind}
+                  data-m1-rank={it.m1_rank_sort ?? ""}
+                  data-koc-rank={it.koc_rank_sort ?? ""}
+                  data-r1-rank={it.r1_rank_sort ?? ""}
+                >
+                  {i > 0 && " / "}
+                  <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
+                </span>
+              ))}
+            </p>
+          </section>
+        );
+      })}
+      
+      {/* 未設定グループ（結成日・4月基準） */}
+      {formationUnknownGroup.length > 0 && (
+        <section class="co-row">
+          <h2 id="formation-april-unknown">その他（未設定）</h2>
+          <p class="name-line">
+            {formationUnknownGroup.map((it, i) => (
+              <span
+                class="co-item"
+                data-kind={it.kind}
+                data-m1-rank={it.m1_rank_sort ?? ""}
+                data-koc-rank={it.koc_rank_sort ?? ""}
+                data-r1-rank={it.r1_rank_sort ?? ""}
+              >
+                {i > 0 && " / "}
+                <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
+              </span>
+            ))}
+          </p>
+        </section>
+      )}
+    </div>
   </div>
 
   <!-- 誕生日順の表示 -->
   <div id="birthday-view" style="display: none;">
-    {birthdayYears.map(year => (
-      <section class="co-row">
-        <h2 id={`birthday-${year}`}>{year}年生まれ</h2>
-        <p class="name-line">
-          {birthdayYearGroups[year].map((it, i) => (
-            <span
-              class="co-item"
-              data-kind={it.kind}
-              data-m1-rank={it.m1_rank_sort ?? ""}
-              data-koc-rank={it.koc_rank_sort ?? ""}
-              data-r1-rank={it.r1_rank_sort ?? ""}
-            >
-              {i > 0 && " / "}
-              <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
-            </span>
-          ))}
-        </p>
-      </section>
-    ))}
-    
-    {/* 未設定グループ（誕生日順） */}
-    {birthdayUnknownGroup.length > 0 && (
-      <section class="co-row">
-        <h2 id="birthday-unknown">その他（未設定）</h2>
-        <p class="name-line">
-          {birthdayUnknownGroup.map((it, i) => (
-            <span
-              class="co-item"
-              data-kind={it.kind}
-              data-m1-rank={it.m1_rank_sort ?? ""}
-              data-koc-rank={it.koc_rank_sort ?? ""}
-              data-r1-rank={it.r1_rank_sort ?? ""}
-            >
-              {i > 0 && " / "}
-              <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
-            </span>
-          ))}
-        </p>
-      </section>
-    )}
+    <!-- 今日基準表示 -->
+    <div id="birthday-today" style="display: block;">
+      {birthdayTodayYears.map(yearsKey => {
+        const years = parseInt(yearsKey);
+        const group = birthdayTodayGroups[yearsKey];
+        return (
+          <section class="co-row">
+            <h2 id={`birthday-today-${yearsKey}`}>
+              {formatYearsLabel(years, 'today', 'birthday')}
+              <span class="period-label">{formatPeriodLabel(years, 'today', 'birthday')}</span>
+            </h2>
+            <p class="name-line">
+              {group.map((it, i) => (
+                <span
+                  class="co-item"
+                  data-kind={it.kind}
+                  data-m1-rank={it.m1_rank_sort ?? ""}
+                  data-koc-rank={it.koc_rank_sort ?? ""}
+                  data-r1-rank={it.r1_rank_sort ?? ""}
+                >
+                  {i > 0 && " / "}
+                  <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
+                </span>
+              ))}
+            </p>
+          </section>
+        );
+      })}
+      
+      {/* 未設定グループ（誕生日・今日基準） */}
+      {birthdayUnknownGroup.length > 0 && (
+        <section class="co-row">
+          <h2 id="birthday-today-unknown">その他（未設定）</h2>
+          <p class="name-line">
+            {birthdayUnknownGroup.map((it, i) => (
+              <span
+                class="co-item"
+                data-kind={it.kind}
+                data-m1-rank={it.m1_rank_sort ?? ""}
+                data-koc-rank={it.koc_rank_sort ?? ""}
+                data-r1-rank={it.r1_rank_sort ?? ""}
+              >
+                {i > 0 && " / "}
+                <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
+              </span>
+            ))}
+          </p>
+        </section>
+      )}
+    </div>
+
+    <!-- 4月基準表示 -->
+    <div id="birthday-april" style="display: none;">
+      {birthdayAprilYears.map(yearsKey => {
+        const years = parseInt(yearsKey);
+        const group = birthdayAprilGroups[yearsKey];
+        return (
+          <section class="co-row">
+            <h2 id={`birthday-april-${yearsKey}`}>
+              {formatYearsLabel(years, 'april', 'birthday')}
+              <span class="period-label">{formatPeriodLabel(years, 'april', 'birthday')}</span>
+            </h2>
+            <p class="name-line">
+              {group.map((it, i) => (
+                <span
+                  class="co-item"
+                  data-kind={it.kind}
+                  data-m1-rank={it.m1_rank_sort ?? ""}
+                  data-koc-rank={it.koc_rank_sort ?? ""}
+                  data-r1-rank={it.r1_rank_sort ?? ""}
+                >
+                  {i > 0 && " / "}
+                  <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
+                </span>
+              ))}
+            </p>
+          </section>
+        );
+      })}
+      
+      {/* 未設定グループ（誕生日・4月基準） */}
+      {birthdayUnknownGroup.length > 0 && (
+        <section class="co-row">
+          <h2 id="birthday-april-unknown">その他（未設定）</h2>
+          <p class="name-line">
+            {birthdayUnknownGroup.map((it, i) => (
+              <span
+                class="co-item"
+                data-kind={it.kind}
+                data-m1-rank={it.m1_rank_sort ?? ""}
+                data-koc-rank={it.koc_rank_sort ?? ""}
+                data-r1-rank={it.r1_rank_sort ?? ""}
+              >
+                {i > 0 && " / "}
+                <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
+              </span>
+            ))}
+          </p>
+        </section>
+      )}
+    </div>
   </div>
 </Base>
 
@@ -507,6 +855,13 @@ const birthdayYears = Object.keys(birthdayYearGroups).sort((a, b) => parseInt(b)
   .subindex a { text-decoration: none; border-bottom: 1px dotted currentColor; }
   .subindex .muted { opacity: .4; }
   .subgroup h3 { margin: .75rem 0 .25rem; font-size: 1.05rem; }
+
+  .period-label {
+    font-size: 0.8rem;
+    font-weight: normal;
+    color: var(--muted, #666);
+    margin-left: 0.5rem;
+  }
 
   .kind-tabs {
     display: flex;
@@ -572,6 +927,7 @@ const birthdayYears = Object.keys(birthdayYearGroups).sort((a, b) => parseInt(b)
   const KIND_ALLOWED = ['all', 'unit', 'person'];
   const RESULT_ALLOWED = ['any', 'quarter', 'semi', 'final', 'win'];
   const SORT_ALLOWED = ['reading', 'formation', 'birthday'];
+  const BASE_ALLOWED = ['today', 'april'];
 
   const nameLines = Array.from(
     document.querySelectorAll('.name-line')
@@ -583,7 +939,7 @@ const birthdayYears = Object.keys(birthdayYearGroups).sort((a, b) => parseInt(b)
   const countEl = document.getElementById('co-count');
 
   // ソート表示の切り替え
-  function showSortView(sortType) {
+  function showSortView(sortType, baseType = 'today') {
     const views = ['reading-view', 'formation-view', 'birthday-view'];
     views.forEach(id => {
       const view = document.getElementById(id);
@@ -591,6 +947,43 @@ const birthdayYears = Object.keys(birthdayYearGroups).sort((a, b) => parseInt(b)
         view.style.display = (id === `${sortType}-view`) ? 'block' : 'none';
       }
     });
+    
+    // 基準選択UIの表示/非表示
+    const baseFilterRow = document.getElementById('base-filter-row');
+    if (baseFilterRow) {
+      baseFilterRow.style.display = (sortType === 'reading') ? 'none' : 'block';
+    }
+    
+    // 基準ボタンのラベルを更新
+    updateBaseTabLabels(sortType);
+    
+    // 年ごと表示の場合、基準も切り替え
+    if (sortType === 'formation' || sortType === 'birthday') {
+      showBaseView(sortType, baseType);
+    }
+  }
+
+  // 基準ボタンのラベルを更新
+  function updateBaseTabLabels(sortType) {
+    const aprilButton = document.querySelector('#base-tabs button[data-base="april"]');
+    if (aprilButton) {
+      if (sortType === 'formation') {
+        aprilButton.textContent = '1月基準';
+      } else {
+        aprilButton.textContent = '4月基準';
+      }
+    }
+  }
+
+  // 基準表示の切り替え（今日基準 vs 4月基準）
+  function showBaseView(sortType, baseType) {
+    if (sortType === 'reading') return;
+    
+    const todayView = document.getElementById(`${sortType}-today`);
+    const aprilView = document.getElementById(`${sortType}-april`);
+    
+    if (todayView) todayView.style.display = (baseType === 'today') ? 'block' : 'none';
+    if (aprilView) aprilView.style.display = (baseType === 'april') ? 'block' : 'none';
   }
 
   function parseRankSort(v) {
@@ -618,11 +1011,12 @@ const birthdayYears = Object.keys(birthdayYearGroups).sort((a, b) => parseInt(b)
   }
 
   function readStateFromUrlAndStorage() {
-    const def = { sort: 'reading', kind: 'all', m1: 'any', koc: 'any', r1: 'any' };
+    const def = { sort: 'reading', base: 'today', kind: 'all', m1: 'any', koc: 'any', r1: 'any' };
 
     try {
       const url = new URL(location.href);
       const sortQ = url.searchParams.get('sort');
+      const baseQ = url.searchParams.get('base');
       const kindQ = url.searchParams.get('kind');
       const m1Q   = url.searchParams.get('m1');
       const kocQ  = url.searchParams.get('koc');
@@ -630,14 +1024,16 @@ const birthdayYears = Object.keys(birthdayYearGroups).sort((a, b) => parseInt(b)
 
       const fromUrl = {
         sort: SORT_ALLOWED.includes(sortQ || '') ? sortQ : null,
+        base: BASE_ALLOWED.includes(baseQ || '') ? baseQ : null,
         kind: KIND_ALLOWED.includes(kindQ || '') ? kindQ : null,
         m1:   RESULT_ALLOWED.includes(m1Q || '') ? m1Q   : null,
         koc:  RESULT_ALLOWED.includes(kocQ || '') ? kocQ : null,
         r1:   RESULT_ALLOWED.includes(r1Q || '') ? r1Q   : null,
       };
-      if (fromUrl.sort || fromUrl.kind || fromUrl.m1 || fromUrl.koc || fromUrl.r1) {
+      if (fromUrl.sort || fromUrl.base || fromUrl.kind || fromUrl.m1 || fromUrl.koc || fromUrl.r1) {
         return {
           sort: fromUrl.sort || def.sort,
+          base: fromUrl.base || def.base,
           kind: fromUrl.kind || def.kind,
           m1:   fromUrl.m1   || def.m1,
           koc:  fromUrl.koc  || def.koc,
@@ -651,11 +1047,12 @@ const birthdayYears = Object.keys(birthdayYearGroups).sort((a, b) => parseInt(b)
       if (saved) {
         const parsed = JSON.parse(saved);
         const sort = SORT_ALLOWED.includes(parsed.sort) ? parsed.sort : def.sort;
+        const base = BASE_ALLOWED.includes(parsed.base) ? parsed.base : def.base;
         const kind = KIND_ALLOWED.includes(parsed.kind) ? parsed.kind : def.kind;
         const m1   = RESULT_ALLOWED.includes(parsed.m1) ? parsed.m1   : def.m1;
         const koc  = RESULT_ALLOWED.includes(parsed.koc) ? parsed.koc : def.koc;
         const r1   = RESULT_ALLOWED.includes(parsed.r1) ? parsed.r1 : def.r1;
-        return { sort, kind, m1, koc, r1 };
+        return { sort, base, kind, m1, koc, r1 };
       }
     } catch (_) {}
 
@@ -666,6 +1063,7 @@ const birthdayYears = Object.keys(birthdayYearGroups).sort((a, b) => parseInt(b)
     try {
       const url = new URL(location.href);
       url.searchParams.set('sort', state.sort);
+      url.searchParams.set('base', state.base);
       url.searchParams.set('kind', state.kind);
       url.searchParams.set('m1',   state.m1);
       url.searchParams.set('koc',  state.koc);
@@ -700,7 +1098,7 @@ const birthdayYears = Object.keys(birthdayYearGroups).sort((a, b) => parseInt(b)
     });
   }
 
-  function updateCount(currentSort = 'reading') {
+  function updateCount(currentSort = 'reading', currentBase = 'today') {
     if (!countEl) return;
     
     let visibleCount = 0;
@@ -709,11 +1107,11 @@ const birthdayYears = Object.keys(birthdayYearGroups).sort((a, b) => parseInt(b)
       // 読み仮名ビューの場合
       visibleCount = coItems.filter(el => !el.hasAttribute('hidden')).length;
     } else {
-      // 年ごとビューの場合
-      const currentViewId = `${currentSort}-view`;
-      const currentView = document.getElementById(currentViewId);
-      if (currentView) {
-        const viewItems = Array.from(currentView.querySelectorAll('.co-item'));
+      // 年ごとビューの場合、現在表示されている基準のビューのみをカウント
+      const currentBaseViewId = `${currentSort}-${currentBase}`;
+      const currentBaseView = document.getElementById(currentBaseViewId);
+      if (currentBaseView && currentBaseView.style.display !== 'none') {
+        const viewItems = Array.from(currentBaseView.querySelectorAll('.co-item'));
         visibleCount = viewItems.filter(el => !el.hasAttribute('hidden')).length;
       }
     }
@@ -774,7 +1172,7 @@ const birthdayYears = Object.keys(birthdayYearGroups).sort((a, b) => parseInt(b)
 
     updateSeparatorsAndEmptyLines();
     updateRowSectionVisibility();
-    updateCount(state.sort);
+    updateCount(state.sort, state.base);
   }
 
   function setActiveTab(container, attrName, value) {
@@ -788,6 +1186,7 @@ const birthdayYears = Object.keys(birthdayYearGroups).sort((a, b) => parseInt(b)
 
   function syncTabs(state) {
     setActiveTab(document.getElementById('sort-tabs'), 'sort', state.sort);
+    setActiveTab(document.getElementById('base-tabs'), 'base', state.base);
     setActiveTab(document.getElementById('kind-tabs'), 'kind', state.kind);
     setActiveTab(document.getElementById('m1-tabs'),   'm1',   state.m1);
     setActiveTab(document.getElementById('koc-tabs'),  'koc',  state.koc);
@@ -796,16 +1195,17 @@ const birthdayYears = Object.keys(birthdayYearGroups).sort((a, b) => parseInt(b)
 
   function setupFilter() {
     const sortWrap = document.getElementById('sort-tabs');
+    const baseWrap = document.getElementById('base-tabs');
     const kindWrap = document.getElementById('kind-tabs');
     const m1Wrap   = document.getElementById('m1-tabs');
     const kocWrap  = document.getElementById('koc-tabs');
     const r1Wrap   = document.getElementById('r1-tabs');
-    if (!sortWrap || !kindWrap || !m1Wrap || !kocWrap || !r1Wrap) return;
+    if (!sortWrap || !baseWrap || !kindWrap || !m1Wrap || !kocWrap || !r1Wrap) return;
 
     let state = readStateFromUrlAndStorage();
     syncTabs(state);
     applyFilter(state);
-    showSortView(state.sort);
+    showSortView(state.sort, state.base);
 
     function wireTabs(container, attrName, onChange) {
       const buttons = Array.from(container.querySelectorAll('.kind-tab'));
@@ -821,7 +1221,15 @@ const birthdayYears = Object.keys(birthdayYearGroups).sort((a, b) => parseInt(b)
     wireTabs(sortWrap, 'sort', (v) => {
       state = { ...state, sort: v };
       setActiveTab(sortWrap, 'sort', v);
-      showSortView(v);
+      showSortView(v, state.base);
+      writeStateToUrlAndStorage(state);
+      applyFilter(state);
+    });
+
+    wireTabs(baseWrap, 'base', (v) => {
+      state = { ...state, base: v };
+      setActiveTab(baseWrap, 'base', v);
+      showSortView(state.sort, v);
       writeStateToUrlAndStorage(state);
       applyFilter(state);
     });
