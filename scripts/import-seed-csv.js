@@ -966,16 +966,9 @@ db.transaction(() => {
     insFR.run(params);
   }
 
-  // comedians の has_profile 更新（final_results に出ている代表グループ全員を 1）
+  // comedians の has_profile 更新（全芸人を1に設定）
   db.exec(`
-    UPDATE comedians AS co
-    SET has_profile = 1
-    WHERE EXISTS (
-      SELECT 1
-      FROM final_results fr
-      JOIN comedians cx ON cx.id = fr.comedian_id
-      WHERE COALESCE(cx.canonical_id, cx.id) = COALESCE(co.canonical_id, co.id)
-    )
+    UPDATE comedians SET has_profile = 1
   `);
 
   // judges

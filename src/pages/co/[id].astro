@@ -3,7 +3,7 @@ import Base from "../../layouts/Base.astro";
 import type { CoListItem } from "../../lib/queries";
 import {
   listCompetitions,
-  listComedianIdsWithProfile,
+  listComediansCanonicalOnly,
   getComedianTables,
   getComedianTablesByYear,
   getUnitMembers,
@@ -16,7 +16,9 @@ import ResultDataCells from "../../components/ResultDataCells.astro";
 const base = import.meta.env.BASE_URL;
 
 export async function getStaticPaths() {
-  const ids = listComedianIdsWithProfile(); // string[]
+  // has_profile に関係なく全ての芸人のページを作成
+  const comedians = listComediansCanonicalOnly();
+  const ids = comedians.map(c => c.id);
   return ids.map((id) => ({ params: { id } }));
 }
 
@@ -309,15 +311,56 @@ const titleName =
     ? `${comedian.name}（${comedian.note}）`
     : comedian.name;
 
+// 日付表示用の関数
+const TODAY = new Date();
+
+function formatDate(dateStr: string | null): string | null {
+  if (!dateStr) return null;
+  
+  const normalized = dateStr.replace(/年|月|日/g, '/').replace(/\/+/g, '/').replace(/\/$/, '');
+  const parts = normalized.split('/').map(p => parseInt(p.trim()));
+  
+  if (parts.length === 0 || isNaN(parts[0])) return null;
+  
+  const year = parts[0];
+  const month = parts.length >= 2 && !isNaN(parts[1]) ? parts[1] : null;
+  const day = parts.length >= 3 && !isNaN(parts[2]) ? parts[2] : null;
+  
+  if (month && day) {
+    return `${year}年${month}月${day}日`;
+  } else if (month) {
+    return `${year}年${month}月`;
+  } else {
+    return `${year}年`;
+  }
+}
+
+function calculateAge(dateStr: string | null): string | null {
+  if (!dateStr) return null;
+  
+  const normalized = dateStr.replace(/年|月|日/g, '/').replace(/\/+/g, '/').replace(/\/$/, '');
+  const parts = normalized.split('/').map(p => parseInt(p.trim()));
+  
+  if (parts.length === 0 || isNaN(parts[0])) return null;
+  
+  const year = parts[0];
+  const month = parts.length >= 2 && !isNaN(parts[1]) ? parts[1] : 4; // デフォルト4月
+  const day = parts.length >= 3 && !isNaN(parts[2]) ? parts[2] : 1;   // デフォルト1日
+  
+  const birthDate = new Date(year, month - 1, day);
+  const age = Math.floor((TODAY.getTime() - birthDate.getTime()) / (1000 * 60 * 60 * 24 * 365.25));
+  
+  return comedian.kind === 'person' ? `${age}歳` : `結成${age}年`;
+}
+
+const formattedBirthDate = formatDate(comedian.birth_date);
+const ageInfo = calculateAge(comedian.birth_date);
+
 export interface Props {
   size?: number;          // px
   title?: string;
   class?: string;
 }
-const size = Astro.props.size ?? 16;
-const title = Astro.props.title ?? "M-1公式";
-const klass = Astro.props.class ?? "";
-// 色はCSS変数で上書き可能（サイトのトーンに合わせたい場合）
 
 type ResultColumnRole =
   | "default"
@@ -399,6 +442,19 @@ const yearBlocksWithCols = yearBlocks.map((blk: any) => ({
           </svg>
         </a>
       )}
+    </p>
+  )}
+
+  <!-- 誕生日・結成日 -->
+  {(formattedBirthDate || ageInfo) && (
+    <p class="date-line muted">
+      {formattedBirthDate && (
+        <span class="birth-date">
+          {comedian.kind === 'person' ? '誕生日' : '結成日'}: {formattedBirthDate}
+        </span>
+      )}
+      {formattedBirthDate && ageInfo && <span class="sep"> ／ </span>}
+      {ageInfo && <span class="age-info">{ageInfo}</span>}
     </p>
   )}
 
