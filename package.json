@@ -13,7 +13,8 @@
     "data:sync:comedians": "node scripts/sync-comedians-csv-from-results.js",
     "data:convert:scores": "node scripts/convert-judge-scores-wide.js",
     "playwright:install": "playwright install chromium",
-    "data:scrape:m1": "node scripts/m1_scrape_multi.js"
+    "data:scrape:m1": "node scripts/m1_scrape_multi.js",
+    "deploy:actions": "gh workflow run daily-deploy.yml"
   },
   "dependencies": {
     "@picocss/pico": "^2.1.1",
