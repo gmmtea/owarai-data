@@ -531,7 +531,6 @@ db.transaction(() => {
       birth_day     INTEGER,                               -- 日
       m1_url      TEXT,                                    -- 公式: https://www.m-1gp.com/combi/xxxxx.html
       canonical_id TEXT REFERENCES comedians(id),
-      has_profile INTEGER NOT NULL DEFAULT 0,
       UNIQUE (name, number)
     );
     -- 「name × number」をユニークにする。ただし number=NULL は名前ごとに高々1件に制限
@@ -965,11 +964,6 @@ db.transaction(() => {
 
     insFR.run(params);
   }
-
-  // comedians の has_profile 更新（全芸人を1に設定）
-  db.exec(`
-    UPDATE comedians SET has_profile = 1
-  `);
 
   // judges
   for (const r of judgesCsv) {

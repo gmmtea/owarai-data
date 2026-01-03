@@ -156,21 +156,18 @@ type EditionBirthRow = {
   person_id: string;
   person_name: string;
   person_reading: string | null;
-  person_has_profile: boolean;
   birth_year: number | null;
   birth_month: number | null;
   birth_day: number | null;
   birth_date_raw: string | null;
   unit_id: string | null;
   unit_name: string | null;
-  unit_has_profile: boolean;
 };
 
 type EditionFormationRow = {
   unit_id: string;
   unit_name: string;
   unit_reading: string | null;
-  unit_has_profile: boolean;
   birth_year: number | null;
   birth_month: number | null;
   birth_day: number | null;
@@ -230,7 +227,6 @@ export function getEditionBirthAndFormationTables(
         root.id            AS unit_id,
         root.name          AS unit_name,
         root.reading       AS unit_reading,
-        root.has_profile   AS unit_has_profile,
         root.birth_year    AS birth_year,
         root.birth_month   AS birth_month,
         root.birth_day     AS birth_day,
@@ -255,14 +251,12 @@ export function getEditionBirthAndFormationTables(
         p_root.id          AS person_id,
         p_root.name        AS person_name,
         p_root.reading     AS person_reading,
-        p_root.has_profile AS person_has_profile,
         p_root.birth_year  AS birth_year,
         p_root.birth_month AS birth_month,
         p_root.birth_day   AS birth_day,
         p_root.birth_date  AS birth_date_raw,
         u_root.id          AS unit_id,
-        u_root.name        AS unit_name,
-        u_root.has_profile AS unit_has_profile
+        u_root.name        AS unit_name
       FROM final_results fr
       JOIN comedians u_final
         ON u_final.id = fr.comedian_id
@@ -288,7 +282,6 @@ export function getEditionBirthAndFormationTables(
         p_root.id          AS person_id,
         p_root.name        AS person_name,
         p_root.reading     AS person_reading,
-        p_root.has_profile AS person_has_profile,
         p_root.birth_year  AS birth_year,
         p_root.birth_month AS birth_month,
         p_root.birth_day   AS birth_day,
@@ -305,7 +298,7 @@ export function getEditionBirthAndFormationTables(
     )
     .all(editionId) as Omit<
     EditionBirthRow,
-    "unit_id" | "unit_name" | "unit_has_profile"
+    "unit_id" | "unit_name"
   >[];
 
   // memberBirthRaw の person_id を集合化（ユニット所属者）
@@ -320,7 +313,6 @@ export function getEditionBirthAndFormationTables(
       ...r,
       unit_id: null,
       unit_name: null,
-      unit_has_profile: false,
     }));
 
   // 誕生日テーブル用の行を結合
@@ -462,7 +454,6 @@ export function listComediansCanonicalOnly(): CoCanonicalRow[] {
       ON r1.comedian_id = c.id
     WHERE
       c.canonical_id IS NULL
-      AND COALESCE(c.has_profile, 0) = 1
     ORDER BY COALESCE(c.reading, c.name)
   `).all() as CoCanonicalRow[];
 }
@@ -501,7 +492,6 @@ export function listComediansCanonicalOnlyWithRelatedRanks(): CoCanonicalRow[] {
       JOIN canon pcan ON pcan.raw_id = m.person_id
       JOIN canon ucan ON ucan.raw_id = m.unit_id
       WHERE c.canonical_id IS NULL
-        AND COALESCE(c.has_profile, 0) = 1
         AND (
           (c.kind = 'person' AND pcan.canon_id = c.id)
           OR
@@ -512,7 +502,6 @@ export function listComediansCanonicalOnlyWithRelatedRanks(): CoCanonicalRow[] {
       SELECT c.id AS base_id, c.id AS canon_id
       FROM comedians c
       WHERE c.canonical_id IS NULL
-        AND COALESCE(c.has_profile, 0) = 1
       UNION ALL
       SELECT base_id, rel_canon_id
       FROM rel
@@ -547,7 +536,6 @@ export function listComediansCanonicalOnlyWithRelatedRanks(): CoCanonicalRow[] {
 
     FROM comedians c
     WHERE c.canonical_id IS NULL
-      AND COALESCE(c.has_profile, 0) = 1
     ORDER BY COALESCE(c.reading, c.name)
   `).all({ BIG }) as any[];
 
@@ -596,7 +584,6 @@ export function listComediansCanonicalOnlyWithRelatedRanksAndBirthDate(): CoCano
       JOIN canon pcan ON pcan.raw_id = m.person_id
       JOIN canon ucan ON ucan.raw_id = m.unit_id
       WHERE c.canonical_id IS NULL
-        AND COALESCE(c.has_profile, 0) = 1
         AND (
           (c.kind = 'person' AND pcan.canon_id = c.id)
           OR
@@ -607,7 +594,6 @@ export function listComediansCanonicalOnlyWithRelatedRanksAndBirthDate(): CoCano
       SELECT c.id AS base_id, c.id AS canon_id
       FROM comedians c
       WHERE c.canonical_id IS NULL
-        AND COALESCE(c.has_profile, 0) = 1
       UNION ALL
       SELECT base_id, rel_canon_id
       FROM rel
@@ -646,7 +632,6 @@ export function listComediansCanonicalOnlyWithRelatedRanksAndBirthDate(): CoCano
 
     FROM comedians c
     WHERE c.canonical_id IS NULL
-      AND COALESCE(c.has_profile, 0) = 1
     ORDER BY COALESCE(c.reading, c.name)
   `).all({ BIG }) as any[];
 
@@ -719,7 +704,6 @@ export function listComediansCanonicalOnlyWithBirthDate(): CoCanonicalRowWithBir
       ON r1.comedian_id = c.id
     WHERE
       c.canonical_id IS NULL
-      AND COALESCE(c.has_profile, 0) = 1
     ORDER BY COALESCE(c.reading, c.name)
   `).all() as CoCanonicalRowWithBirthDate[];
 }
@@ -1368,7 +1352,6 @@ export type CoListItem = {
   m1_min_rank_sort: number | null;   // 例: 1, 2, 4, 50, 100, 500... / null
   koc_min_rank_sort: number | null;
   r1_min_rank_sort: number | null;
-  has_profile?: 0 | 1;
 };
 
 // 代表IDを1回解決
@@ -1381,8 +1364,7 @@ export function getUnitMembers(unitId: string): CoListItem[] {
   return db().prepare(`
     SELECT co.id,
            COALESCE(co.canonical_id, co.id) AS link_id,
-           co.name, co.reading, co.kind,
-           COALESCE(co.has_profile, 0) AS has_profile
+           co.name, co.reading, co.kind
     FROM memberships m
     JOIN comedians co ON co.id = m.person_id
     WHERE m.unit_id = ?
@@ -1395,8 +1377,7 @@ export function getPersonUnits(personId: string): CoListItem[] {
   return db().prepare(`
     SELECT u.id,
            COALESCE(u.canonical_id, u.id) AS link_id,
-           u.name, u.reading, u.kind,
-           COALESCE(u.has_profile, 0) AS has_profile
+           u.name, u.reading, u.kind
     FROM memberships m
     JOIN comedians u ON u.id = m.unit_id
     WHERE m.person_id = ?
@@ -1412,8 +1393,7 @@ export function getRelatedUnitsForUnit(unitId: string): CoListItem[] {
       c2.id               AS link_id,          -- 代表へリンク
       c2.name             AS name,
       c2.reading          AS reading,
-      c2.kind             AS kind,
-      COALESCE(c2.has_profile, 0) AS has_profile
+      c2.kind             AS kind
     FROM memberships m1                          -- 対象ユニットのメンバー
     JOIN memberships m2 ON m2.person_id = m1.person_id   -- そのメンバーが所属する別ユニット
     JOIN comedians u   ON u.id  = m2.unit_id
@@ -1432,8 +1412,7 @@ export function getRelatedMembersForPerson(personId: string): CoListItem[] {
       c2.id               AS link_id,
       c2.name             AS name,
       c2.reading          AS reading,
-      c2.kind             AS kind,
-      COALESCE(c2.has_profile, 0) AS has_profile
+      c2.kind             AS kind
     FROM memberships mu                           -- 対象の人→所属ユニット
     JOIN memberships mo ON mo.unit_id = mu.unit_id -- 同じユニットのメンバー
     JOIN comedians p   ON p.id  = mo.person_id
@@ -1442,16 +1421,6 @@ export function getRelatedMembersForPerson(personId: string): CoListItem[] {
       AND mo.person_id <> ?
     ORDER BY COALESCE(c2.reading, c2.name)
   `).all(personId, personId) as CoListItem[];
-}
-
-/* プロフィールあり芸人ID一覧 */
-export function listComedianIdsWithProfile(): string[] {
-  return db().prepare(`
-    SELECT id
-    FROM comedians
-    WHERE has_profile = 1
-    ORDER BY reading IS NULL, reading, name
-  `).all().map((r:any) => r.id);
 }
 
 /* ============================= 更新履歴 ============================= */

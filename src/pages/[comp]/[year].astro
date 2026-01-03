@@ -432,26 +432,18 @@ function formatFormationYears(years?: number | null): string {
                   ) || "（未設定）"}
                 </td>
                 <td>
-                  {row.person_has_profile ? (
-                    <a href={`${base}co/${row.person_id}`}>
-                      {row.person_name}
-                    </a>
-                  ) : (
-                    row.person_name
-                  )}
+                  <a href={`${base}co/${row.person_id}`}>
+                    {row.person_name}
+                  </a>
                 </td>
                 <td>
-                  {row.unit_id
-                    ? row.unit_has_profile
-                      ? (
-                        <a href={`${base}co/${row.unit_id}`}>
-                          {row.unit_name}
-                        </a>
-                      )
-                      : (
-                        row.unit_name
-                      )
-                    : "-"}
+                  {row.unit_id ? (
+                    <a href={`${base}co/${row.unit_id}`}>
+                      {row.unit_name}
+                    </a>
+                  ) : (
+                    "-"
+                  )}
                 </td>
               </tr>
             ))}
@@ -493,13 +485,9 @@ function formatFormationYears(years?: number | null): string {
                   ) || "（未設定）"}
                 </td>
                 <td>
-                  {row.unit_has_profile ? (
-                    <a href={`${base}co/${row.unit_id}`}>
-                      {row.unit_name}
-                    </a>
-                  ) : (
-                    row.unit_name
-                  )}
+                  <a href={`${base}co/${row.unit_id}`}>
+                    {row.unit_name}
+                  </a>
                 </td>
               </tr>
             ))}

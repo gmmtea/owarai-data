@@ -16,7 +16,6 @@ import ResultDataCells from "../../components/ResultDataCells.astro";
 const base = import.meta.env.BASE_URL;
 
 export async function getStaticPaths() {
-  // has_profile に関係なく全ての芸人のページを作成
   const comedians = listComediansCanonicalOnly();
   const ids = comedians.map(c => c.id);
   return ids.map((id) => ({ params: { id } }));
@@ -314,28 +313,7 @@ const titleName =
 // 日付表示用の関数
 const TODAY = new Date();
 
-function formatDate(dateStr: string | null): string | null {
-  if (!dateStr) return null;
-  
-  const normalized = dateStr.replace(/年|月|日/g, '/').replace(/\/+/g, '/').replace(/\/$/, '');
-  const parts = normalized.split('/').map(p => parseInt(p.trim()));
-  
-  if (parts.length === 0 || isNaN(parts[0])) return null;
-  
-  const year = parts[0];
-  const month = parts.length >= 2 && !isNaN(parts[1]) ? parts[1] : null;
-  const day = parts.length >= 3 && !isNaN(parts[2]) ? parts[2] : null;
-  
-  if (month && day) {
-    return `${year}年${month}月${day}日`;
-  } else if (month) {
-    return `${year}年${month}月`;
-  } else {
-    return `${year}年`;
-  }
-}
-
-function calculateAge(dateStr: string | null): string | null {
+function formatDateWithAge(dateStr: string | null): string | null {
   if (!dateStr) return null;
   
   const normalized = dateStr.replace(/年|月|日/g, '/').replace(/\/+/g, '/').replace(/\/$/, '');
@@ -347,14 +325,28 @@ function calculateAge(dateStr: string | null): string | null {
   const month = parts.length >= 2 && !isNaN(parts[1]) ? parts[1] : 4; // デフォルト4月
   const day = parts.length >= 3 && !isNaN(parts[2]) ? parts[2] : 1;   // デフォルト1日
   
+  // 日付文字列の作成
+  let dateText = '';
+  if (parts.length >= 3 && !isNaN(parts[2])) {
+    dateText = `${year}年${month}月${day}日`;
+  } else if (parts.length >= 2 && !isNaN(parts[1])) {
+    dateText = `${year}年${month}月`;
+  } else {
+    dateText = `${year}年`;
+  }
+  
+  // 年齢の計算
   const birthDate = new Date(year, month - 1, day);
   const age = Math.floor((TODAY.getTime() - birthDate.getTime()) / (1000 * 60 * 60 * 24 * 365.25));
   
-  return comedian.kind === 'person' ? `${age}歳` : `結成${age}年`;
+  // 年齢表記の追加
+  const ageText = comedian.kind === 'person' ? `現在${age}歳` : `現在結成${age}年`;
+  const actionText = comedian.kind === 'person' ? '生まれ' : '結成';
+  
+  return `${dateText}${actionText}（${ageText}）`;
 }
 
-const formattedBirthDate = formatDate(comedian.birth_date);
-const ageInfo = calculateAge(comedian.birth_date);
+const birthDateWithAge = formatDateWithAge(comedian.birth_date);
 
 export interface Props {
   size?: number;          // px
@@ -428,33 +420,27 @@ const yearBlocksWithCols = yearBlocks.map((blk: any) => ({
 
   <h1>{comedian.name} の記録</h1>
 
-  <!-- 読み仮名・備考 -->
-  {(comedian.reading || comedian.note) && (
-    <p class="reading-line muted">
+  <!-- 読み仮名・備考・誕生日/結成日 -->
+  {(comedian.reading || comedian.note || birthDateWithAge) && (
+    <p class="info-line muted">
       {comedian.reading && <span class="yomi">{comedian.reading}</span>}
-      {comedian.reading && comedian.note && <span class="sep"> ／ </span>}
+      {comedian.reading && (comedian.note || birthDateWithAge) && <span class="sep"> ／ </span>}
       {comedian.note && <span class="note">{comedian.note}</span>}
+      {comedian.note && birthDateWithAge && <span class="sep"> ／ </span>}
+      {birthDateWithAge && (
+        <span class="birth-date">{birthDateWithAge}</span>
+      )}
       {comedian.m1_url && (
-        <a href={comedian.m1_url} target="_blank" rel="noopener" class="ext-link ext-link__a">
-          <span>M-1</span>
-          <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" class="ext-ico">
-            <path d="M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42 9.3-9.29H14V3zM5 5h7v2H7v10h10v-5h2v7H5V5z"/>
-          </svg>
-        </a>
+        <>
+          <span class="sep"> ／ </span>
+          <a href={comedian.m1_url} target="_blank" rel="noopener" class="ext-link ext-link__a">
+            <span>M-1</span>
+            <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" class="ext-ico">
+              <path d="M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42 9.3-9.29H14V3zM5 5h7v2H7v10h10v-5h2v7H5V5z"/>
+            </svg>
+          </a>
+        </>
       )}
-    </p>
-  )}
-
-  <!-- 誕生日・結成日 -->
-  {(formattedBirthDate || ageInfo) && (
-    <p class="date-line muted">
-      {formattedBirthDate && (
-        <span class="birth-date">
-          {comedian.kind === 'person' ? '誕生日' : '結成日'}: {formattedBirthDate}
-        </span>
-      )}
-      {formattedBirthDate && ageInfo && <span class="sep"> ／ </span>}
-      {ageInfo && <span class="age-info">{ageInfo}</span>}
     </p>
   )}
 
@@ -467,9 +453,7 @@ const yearBlocksWithCols = yearBlocks.map((blk: any) => ({
           {members.map((m, i) => (
             <>
               {i > 0 && <span class="aff-sep">/</span>}
-              {m.has_profile === 1
-                ? <a class="aff-link" href={`${base}co/${m.link_id}`}>{m.name}</a>
-                : <span class="aff-link-disabled">{m.name}</span>}
+              <a class="aff-link" href={`${base}co/${m.link_id}`}>{m.name}</a>
             </>
           ))}
         </>
@@ -481,9 +465,7 @@ const yearBlocksWithCols = yearBlocks.map((blk: any) => ({
           {units.map((u, i) => (
             <>
               {i > 0 && <span class="aff-sep">/</span>}
-              {u.has_profile === 1
-                ? <a class="aff-link" href={`${base}co/${u.link_id}`}>{u.name}</a>
-                : <span class="aff-link-disabled">{u.name}</span>}
+              <a class="aff-link" href={`${base}co/${u.link_id}`}>{u.name}</a>
             </>
           ))}
         </>
@@ -498,9 +480,7 @@ const yearBlocksWithCols = yearBlocks.map((blk: any) => ({
       {relatedUnits.map((u, i) => (
         <>
           {i > 0 && <span class="aff-sep">/</span>}
-          {u.has_profile === 1
-            ? <a class="aff-link" href={`${base}co/${u.link_id}`}>{u.name}</a>
-            : <span class="aff-link-disabled">{u.name}</span>}
+          <a class="aff-link" href={`${base}co/${u.link_id}`}>{u.name}</a>
         </>
       ))}
     </p>
@@ -513,9 +493,7 @@ const yearBlocksWithCols = yearBlocks.map((blk: any) => ({
       {relatedMembers.map((m, i) => (
         <>
           {i > 0 && <span class="aff-sep">/</span>}
-          {m.has_profile === 1
-            ? <a class="aff-link" href={`${base}co/${m.link_id}`}>{m.name}</a>
-            : <span class="aff-link-disabled">{m.name}</span>}
+          <a class="aff-link" href={`${base}co/${m.link_id}`}>{m.name}</a>
         </>
       ))}
     </p>
