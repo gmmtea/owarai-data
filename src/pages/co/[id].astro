@@ -347,7 +347,7 @@ function formatDateWithAge(dateStr: string | null): string | null {
   }
   
   // 年齢表記の追加
-  const ageText = comedian.kind === 'person' ? `現在${age}歳` : `現在結成${age}年`;
+  const ageText = comedian.kind === 'person' ? `現在${age}歳相当` : `現在結成${age}年相当`;
   const actionText = comedian.kind === 'person' ? '生まれ' : '結成';
   
   return `${dateText}${actionText}（${ageText}）`;
