@@ -182,7 +182,19 @@ others.sort((a, b) => {
 });
 
 /* ============================= 日付計算ユーティリティ ============================= */
-const TODAY = new Date(); // 現在の日付を自動取得
+// 環境変数VITE_BUILD_DATEがあればそれを使い、なければ現在日時を使用
+const buildDate = import.meta.env.VITE_BUILD_DATE;
+
+// 日本時間での日付を作成
+let TODAY: Date;
+if (buildDate) {
+  // YYYY-MM-DD形式から年、月、日を分解
+  const [year, month, day] = buildDate.split('-').map(Number);
+  // Dateコンストラクタを使用（月は0ベースなので-1）
+  TODAY = new Date(year, month - 1, day);
+} else {
+  TODAY = new Date();
+}
 
 // birth_date文字列から日付オブジェクトを作成（デフォルト補完あり）
 function parseDate(dateStr: string | null): Date | null {
