@@ -1461,9 +1461,11 @@ export function listLatestUpdates(): UpdateRow[] {
 
 /* 今日誕生日の芸人 */
 export function listTodaysBirthdayComedians(): CoCanonicalRowWithBirthDate[] {
-  const today = new Date();
-  const month = String(today.getMonth() + 1).padStart(2, '0');
-  const day = String(today.getDate()).padStart(2, '0');
+  // 日本時間（JST = UTC+9）で今日の日付を取得
+  const now = new Date();
+  const japanTime = new Date(now.getTime() + (9 * 60 * 60 * 1000)); // UTC+9時間
+  const month = String(japanTime.getMonth() + 1).padStart(2, '0');
+  const day = String(japanTime.getDate()).padStart(2, '0');
   
   return db().prepare(`
     SELECT

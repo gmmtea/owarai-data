@@ -37,8 +37,9 @@ cards.sort((a,b) => a.priority - b.priority);
 const latestUpdates = listLatestUpdates();
 const todaysBirthdayComedians = listTodaysBirthdayComedians();
 
-// 今日の日付を取得
-const today = new Date();
+// 今日の日付を取得（日本時間）
+const now = new Date();
+const today = new Date(now.getTime() + (9 * 60 * 60 * 1000)); // UTC+9時間
 const todayMonth = today.getMonth() + 1;
 const todayDay = today.getDate();
 

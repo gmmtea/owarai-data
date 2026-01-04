@@ -322,7 +322,9 @@ if (buildDate) {
   // Dateコンストラクタを使用（月は0ベースなので-1）
   TODAY = new Date(year, month - 1, day);
 } else {
-  TODAY = new Date();
+  // 日本時間（JST = UTC+9）で現在の日付を取得
+  const now = new Date();
+  TODAY = new Date(now.getTime() + (9 * 60 * 60 * 1000));
 }
 
 function formatDateWithAge(dateStr: string | null): { dateText: string; ageText: string; actionText: string } | null {
