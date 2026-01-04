@@ -1516,3 +1516,18 @@ export function listTodaysBirthdayComedians(): CoCanonicalRowWithBirthDate[] {
     ORDER BY c.birth_year DESC, c.birth_month DESC, c.birth_day DESC, c.name
   `).all() as CoCanonicalRowWithBirthDate[];
 }
+
+/* 各大会の優勝者を取得 */
+export function getEditionWinners(comp: string, year: number): string[] {
+  const rows = db().prepare(`
+    SELECT c.name
+    FROM final_results fr
+    JOIN editions e ON fr.edition_id = e.id
+    JOIN competitions comp ON e.competition_id = comp.id
+    JOIN comedians c ON fr.comedian_id = c.id
+    WHERE comp.key = ? AND e.year = ? AND fr.rank = '優勝'
+    ORDER BY c.name
+  `).all(comp, year) as Array<{ name: string }>;
+  
+  return rows.map(row => row.name);
+}

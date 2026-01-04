@@ -1,6 +1,6 @@
 ---
 import Base from "../layouts/Base.astro";
-import { listEditionParams, listCompetitions, listLatestUpdates, listTodaysBirthdayComedians } from "../lib/queries";
+import { listEditionParams, listCompetitions, listLatestUpdates, listTodaysBirthdayComedians, getEditionWinners } from "../lib/queries";
 
 const base = import.meta.env.BASE_URL;
 
@@ -160,11 +160,43 @@ function formatJpDateWithWeek(s?: string | null) {
         <ul class="year-list">
           {card.years.map(({year, short_label}) => {
             const label = short_label ?? (year != null ? `${year}` : "（回次未設定）");
+            
+            // 優勝者を取得
+            let winners: string[] = [];
+            if (year != null) {
+              try {
+                winners = getEditionWinners(card.comp, year);
+              } catch (error) {
+                console.warn(`Failed to get winners for ${card.comp} ${year}:`, error);
+                winners = [];
+              }
+            }
+            
             return (
               <li>
-                {year != null
-                  ? <a href={`${base}${card.comp}/${year}`}>{label} 結果</a>
-                  : <span class="muted">{label} 結果</span>}
+                {year != null ? (
+                  <a href={`${base}${card.comp}/${year}`}>
+                    {label}{winners.length > 0 && (
+                      <span class="winner-info">（{winners.map(name => {
+                          if (winners.length > 1) {
+                            // 複数の優勝者がいる場合は5文字以上で省略
+                            if (name.length >= 5) {
+                              return name.substring(0, 3) + '…';
+                            }
+                          } else {
+                            // 単独優勝者の場合は10文字以上で省略
+                            if (name.length >= 10) {
+                              return name.substring(0, 8) + '…';
+                            }
+                          }
+                          return name;
+                        }).join('、')}）
+                      </span>
+                    )}
+                  </a>
+                ) : (
+                  <span class="muted">{label}</span>
+                )}
               </li>
             );
           })}
@@ -365,5 +397,11 @@ function formatJpDateWithWeek(s?: string | null) {
       font-variant-numeric: tabular-nums;
     }
     .updates-content { white-space: pre-line; }
+    
+    /* ========== Winner Info: 優勝者表示のスタイル ========== */
+    .winner-info {
+      font-size: 0.85em;
+      font-weight: normal;
+    }
   </style>
 </Base>
