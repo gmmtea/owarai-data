@@ -95,10 +95,7 @@ function formatJpDateWithWeek(s?: string | null) {
           {todaysBirthdayComedians.map((comedian, index) => (
             <>
               {index > 0 && " / "}
-              <a href={`${base}co/${comedian.id}`} class="birthday-name-link">
-                {comedian.name}
-              </a>
-              <span class="birthday-age">（{calculateAge(comedian.birth_date || '')}歳）</span>
+              <a href={`${base}co/${comedian.id}`} class="birthday-name-link">{comedian.name}</a><span class="birthday-age">（{calculateAge(comedian.birth_date || '')}歳）</span>
             </>
           ))}
         </p>
@@ -397,7 +394,7 @@ function formatJpDateWithWeek(s?: string | null) {
       font-variant-numeric: tabular-nums;
     }
     .updates-content { white-space: pre-line; }
-    
+
     /* ========== Winner Info: 優勝者表示のスタイル ========== */
     .winner-info {
       font-size: 0.85em;
