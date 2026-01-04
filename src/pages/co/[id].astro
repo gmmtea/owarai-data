@@ -325,7 +325,7 @@ if (buildDate) {
   TODAY = new Date();
 }
 
-function formatDateWithAge(dateStr: string | null): string | null {
+function formatDateWithAge(dateStr: string | null): { dateText: string; ageText: string; actionText: string } | null {
   if (!dateStr) return null;
   
   const normalized = dateStr.replace(/年|月|日/g, '/').replace(/\/+/g, '/').replace(/\/$/, '');
@@ -358,14 +358,14 @@ function formatDateWithAge(dateStr: string | null): string | null {
     age--;
   }
   
-  // 年齢表記の追加
-  const ageText = comedian.kind === 'person' ? `現在${age}歳相当` : `現在結成${age}年相当`;
+  // 年齢表記
+  const ageText = comedian.kind === 'person' ? `${age}歳` : `${age}年`;
   const actionText = comedian.kind === 'person' ? '生まれ' : '結成';
   
-  return `${dateText}${actionText}（${ageText}）`;
+  return { dateText, ageText, actionText };
 }
 
-const birthDateWithAge = formatDateWithAge(comedian.birth_date);
+const birthDateData = formatDateWithAge(comedian.birth_date);
 
 export interface Props {
   size?: number;          // px
@@ -440,14 +440,17 @@ const yearBlocksWithCols = yearBlocks.map((blk: any) => ({
   <h1>{comedian.name} の記録</h1>
 
   <!-- 読み仮名・備考・誕生日/結成日 -->
-  {(comedian.reading || comedian.note || birthDateWithAge) && (
+  {(comedian.reading || comedian.note || birthDateData) && (
     <p class="info-line muted">
       {comedian.reading && <span class="yomi">{comedian.reading}</span>}
-      {comedian.reading && (comedian.note || birthDateWithAge) && <span class="sep"> ／ </span>}
+      {comedian.reading && (comedian.note || birthDateData) && <span class="sep"> ／ </span>}
       {comedian.note && <span class="note">{comedian.note}</span>}
-      {comedian.note && birthDateWithAge && <span class="sep"> ／ </span>}
-      {birthDateWithAge && (
-        <span class="birth-date">{birthDateWithAge}</span>
+      {comedian.note && birthDateData && <span class="sep"> ／ </span>}
+      {birthDateData && (
+        <span class="birth-date">
+          {birthDateData.dateText}{birthDateData.actionText}
+          <span class="age-text">（{birthDateData.ageText}）</span>
+        </span>
       )}
       {comedian.m1_url && (
         <>
@@ -754,6 +757,12 @@ const yearBlocksWithCols = yearBlocks.map((blk: any) => ({
 .rel-switch-row[aria-checked="true"] .rel-switch-knob{
   transform: translateX(18px);
   border-color: color-mix(in srgb, var(--accent-strong) 40%, var(--border));
+}
+
+/* 年齢表記を小さく */
+.age-text {
+  font-size: 0.85rem;
+  color: var(--muted);
 }
 
   </style>

@@ -1,6 +1,6 @@
 ---
 import Base from "../layouts/Base.astro";
-import { listEditionParams, listCompetitions, listLatestUpdates } from "../lib/queries";
+import { listEditionParams, listCompetitions, listLatestUpdates, listTodaysBirthdayComedians } from "../lib/queries";
 
 const base = import.meta.env.BASE_URL;
 
@@ -35,6 +35,36 @@ const cards = Array.from(groups.entries()).map(([comp, list]) => {
 cards.sort((a,b) => a.priority - b.priority);
 
 const latestUpdates = listLatestUpdates();
+const todaysBirthdayComedians = listTodaysBirthdayComedians();
+
+// 今日の日付を取得
+const today = new Date();
+const todayMonth = today.getMonth() + 1;
+const todayDay = today.getDate();
+
+// 年齢計算関数
+function calculateAge(birthDateStr: string): number {
+  const normalized = birthDateStr.replace(/年|月|日/g, '/').replace(/\/+/g, '/').replace(/\/$/, '');
+  const parts = normalized.split('/').map(p => parseInt(p.trim()));
+  
+  if (parts.length === 0 || isNaN(parts[0])) return 0;
+  
+  const year = parts[0];
+  const month = parts.length >= 2 && !isNaN(parts[1]) ? parts[1] : 1;
+  const day = parts.length >= 3 && !isNaN(parts[2]) ? parts[2] : 1;
+  
+  const birthDate = new Date(year, month - 1, day);
+  let age = today.getFullYear() - birthDate.getFullYear();
+  
+  // 今年の誕生日がまだ来ていない場合は1歳減らす
+  const todayMonthDay = today.getMonth() * 100 + today.getDate();
+  const birthMonthDay = birthDate.getMonth() * 100 + birthDate.getDate();
+  if (todayMonthDay < birthMonthDay) {
+    age--;
+  }
+  
+  return age;
+}
 
 // "YYYY-MM-DD" → "YYYY年MM月DD日(曜)"（曜日はUTC基準で算出してTZズレを避ける）
 function formatJpDateWithWeek(s?: string | null) {
@@ -55,6 +85,25 @@ function formatJpDateWithWeek(s?: string | null) {
     <p class="muted">
       お笑い芸人やお笑い賞レースの記録を横断して参照できる非公式データ集です。
     </p>
+
+    <section class="scope-details" aria-label="本日誕生日の芸人">
+      {todaysBirthdayComedians.length > 0 && (
+        <div class="scope-summary updates-head">
+          <h2 class="updates-title">本日（{todayMonth}月{todayDay}日）誕生日の芸人</h2>
+        </div>
+        <p class="birthday-list-inline muted">
+          {todaysBirthdayComedians.map((comedian, index) => (
+            <>
+              {index > 0 && " / "}
+              <a href={`${base}co/${comedian.id}`} class="birthday-name-link">
+                {comedian.name}
+              </a>
+              <span class="birthday-age">（{calculateAge(comedian.birth_date || '')}歳）</span>
+            </>
+          ))}
+        </p>
+      )}
+    </section>
 
     <section class="scope-details updates-snippet" aria-label="最新の更新">
       <div class="scope-summary updates-head">
@@ -99,7 +148,7 @@ function formatJpDateWithWeek(s?: string | null) {
   <!-- Masonry の列を作る親 -->
   <div id="masonry" aria-live="polite"></div>
 
-  <!-- ここに“素材”としてカード群を置き、JSで列に再配置する -->
+  <!-- ここに"素材"としてカード群を置き、JSで列に再配置する -->
   <div id="cards-src" hidden>
     {cards.map(card => (
       <section class="comp-card" data-comp={card.comp} data-priority={String(card.priority)}>
@@ -292,6 +341,25 @@ function formatJpDateWithWeek(s?: string | null) {
       column-gap: 30px;
       align-items: start;
     }
+
+    /* 今日の誕生日芸人（1行形式） */
+    .birthday-list-inline {
+      margin: 10px 0 8px 1.2em;
+      line-height: 1.6;
+    }
+    .birthday-name-link {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .birthday-name-link:hover {
+      text-decoration: underline;
+    }
+    .birthday-age {
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    
     .updates-date {
       white-space: nowrap;
       font-variant-numeric: tabular-nums;

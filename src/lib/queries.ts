@@ -1458,3 +1458,61 @@ export function listUpdates(limit?: number): UpdateRow[] {
 export function listLatestUpdates(): UpdateRow[] {
   return listUpdates(3);
 }
+
+/* 今日誕生日の芸人 */
+export function listTodaysBirthdayComedians(): CoCanonicalRowWithBirthDate[] {
+  const today = new Date();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  
+  return db().prepare(`
+    SELECT
+      c.id,
+      c.name,
+      c.reading,
+      c.kind,
+      c.birth_date,
+      c.birth_year,
+      c.birth_month,
+      c.birth_day,
+      m1.best_rank_sort  AS m1_rank_sort,
+      koc.best_rank_sort AS koc_rank_sort,
+      r1.best_rank_sort  AS r1_rank_sort
+    FROM comedians c
+    -- M-1 の最高成績
+    LEFT JOIN (
+      SELECT fr.comedian_id, MIN(fr.rank_sort) AS best_rank_sort
+      FROM final_results fr
+      JOIN editions e ON fr.edition_id = e.id
+      JOIN competitions comp ON e.competition_id = comp.id
+      WHERE comp.key = 'm1'
+      GROUP BY fr.comedian_id
+    ) m1 ON c.id = m1.comedian_id
+    -- KOC の最高成績
+    LEFT JOIN (
+      SELECT fr.comedian_id, MIN(fr.rank_sort) AS best_rank_sort
+      FROM final_results fr
+      JOIN editions e ON fr.edition_id = e.id
+      JOIN competitions comp ON e.competition_id = comp.id
+      WHERE comp.key = 'koc'
+      GROUP BY fr.comedian_id
+    ) koc ON c.id = koc.comedian_id
+    -- R-1 の最高成績
+    LEFT JOIN (
+      SELECT fr.comedian_id, MIN(fr.rank_sort) AS best_rank_sort
+      FROM final_results fr
+      JOIN editions e ON fr.edition_id = e.id
+      JOIN competitions comp ON e.competition_id = comp.id
+      WHERE comp.key = 'r1'
+      GROUP BY fr.comedian_id
+    ) r1 ON c.id = r1.comedian_id
+    WHERE c.canonical_id IS NULL
+    AND c.kind = 'person'
+    AND c.birth_date IS NOT NULL
+    AND (
+      (c.birth_date LIKE '%年${month}月${day}日')
+      OR (c.birth_date LIKE '%年${Number(month)}月${Number(day)}日')
+    )
+    ORDER BY c.birth_year DESC, c.birth_month DESC, c.birth_day DESC, c.name
+  `).all() as CoCanonicalRowWithBirthDate[];
+}
