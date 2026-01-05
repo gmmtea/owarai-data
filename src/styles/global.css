@@ -290,6 +290,10 @@ tbody tr:hover{ background:#fff8f1 }
 .badge[data-ranksort="10"]{  background: color-mix(in srgb, var(--accent) 28%, #fff); border-color: color-mix(in srgb, var(--accent) 48%, #fff); color:#111 }
 .badge[data-ranksort="11"]{  background: color-mix(in srgb, var(--accent) 26%, #fff); border-color: color-mix(in srgb, var(--accent) 46%, #fff); color:#111 }
 .badge[data-ranksort="12"]{  background: color-mix(in srgb, var(--accent) 24%, #fff); border-color: color-mix(in srgb, var(--accent) 44%, #fff); color:#111 }
+.badge[data-ranksort="13"]{  background: color-mix(in srgb, var(--accent) 23%, #fff); border-color: color-mix(in srgb, var(--accent) 43%, #fff); color:#111 }
+.badge[data-ranksort="14"]{  background: color-mix(in srgb, var(--accent) 22%, #fff); border-color: color-mix(in srgb, var(--accent) 42%, #fff); color:#111 }
+.badge[data-ranksort="15"]{  background: color-mix(in srgb, var(--accent) 21%, #fff); border-color: color-mix(in srgb, var(--accent) 41%, #fff); color:#111 }
+.badge[data-ranksort="16"]{  background: color-mix(in srgb, var(--accent) 20%, #fff); border-color: color-mix(in srgb, var(--accent) 40%, #fff); color:#111 }
 
 /* ステージ（rank_sort=50/100/…） */
 .badge[data-ranksort="50"]{   background: color-mix(in srgb, var(--stage-sf) 10%, #fff);  border-color: color-mix(in srgb, var(--stage-sf) 28%, #fff);  color:#111 }

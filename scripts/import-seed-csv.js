@@ -77,10 +77,10 @@ function computeRankSort(rankRaw) {
   if (r === "準優勝") return 2;
   if (r === "マイナビ賞") return 2;
   if (r === "ベスト4") return 3;
-  if (r === "決勝進出") return 12;
-  if (r === "本戦出場") return 12;
-  if (r === "ベスト8") return 12;
-  if (r === "ファーストステージ敗退") return 12;
+  if (r === "決勝進出") return 16;
+  if (r === "本戦出場") return 16;
+  if (r === "ベスト8") return 16;
+  if (r === "ファーストステージ敗退") return 16;
   if (r === "準決勝進出") return 50;
   if (r === "認定漫才師") return 50;
   if (r === "ベスト16") return 50;
