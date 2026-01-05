@@ -244,7 +244,18 @@ function getSortType(c: Column): SortType {
           } else {
             // 別の列をクリック → その列をアクティブにし、初期方向を列種別で決定
             activeColIndex = colIndex;
-            direction = sortType === "number" ? -1 : 1;
+            // 出順・順位は昇順スタート、スコア・結果関連は降順スタート
+            const key = th.getAttribute("data-key") || "";
+            if (key === "first_order" || key === "rank") {
+              direction = 1;  // 昇順（出順・順位）
+            } else if (key === "total" || key === "score" || 
+                       key === "first_score" || key === "second_score" || key === "third_score" ||
+                       key === "first_result" || key === "second_result" || key === "third_result" ||
+                       key.includes("score") || key.includes("result")) {
+              direction = -1; // 降順（スコア・結果関連）
+            } else {
+              direction = sortType === "number" ? -1 : 1;
+            }
           }
 
           const rows = Array.from(tbody.rows);
