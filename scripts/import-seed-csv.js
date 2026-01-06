@@ -83,6 +83,8 @@ function computeRankSort(rankRaw) {
   if (r === "ファーストステージ敗退") return 16;
   if (r === "準決勝進出") return 50;
   if (r === "認定漫才師") return 50;
+  if (r === "セミファイナル進出") return 50;
+  if (r === "視聴者投票1位バトル進出") return 50;
   if (r === "ベスト16") return 50;
   if (r === "準々決勝進出") return 100;
   if (r === "ベスト32") return 100;
