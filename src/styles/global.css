@@ -369,11 +369,31 @@ a.video-link.video-youtube{ color:#ff0033 }
   left:0; top:calc(100% + 6px);
   z-index:1001;                     /* ヘッダー上に重ねる */
   min-width:180px;
+  max-height:70vh;                  /* 画面の70%を最大高さに */
+  overflow-y:auto;                  /* 縦スクロールを有効化 */
   margin:0; padding:6px;
   background:#fff; color:var(--text);
   border:1px solid var(--border);
   border-radius:10px;
   box-shadow:0 6px 24px rgba(0,0,0,.12);
+  /* スクロールバーのスタイル改善 */
+  scrollbar-width: thin;            /* Firefox用 */
+  scrollbar-color: #ccc #f8f8f8;   /* Firefox用 */
+}
+/* Webkit系ブラウザのスクロールバースタイル */
+.nav .menu-list::-webkit-scrollbar{
+  width: 6px;
+}
+.nav .menu-list::-webkit-scrollbar-track{
+  background: #f8f8f8;
+  border-radius: 3px;
+}
+.nav .menu-list::-webkit-scrollbar-thumb{
+  background: #ccc;
+  border-radius: 3px;
+}
+.nav .menu-list::-webkit-scrollbar-thumb:hover{
+  background: #999;
 }
 .nav .menu-list li{ list-style:none }
 .nav .menu-list a{
