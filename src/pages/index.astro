@@ -95,7 +95,9 @@ function formatJpDateWithWeek(s?: string | null) {
         {todaysBirthdayComedians.map((comedian, index) => (
           <>
             {index > 0 && " / "}
-            <a href={`${base}co/${comedian.id}`} class="birthday-name-link">{comedian.name}</a><span class="birthday-age">（{calculateAge(comedian.birth_date || '')}歳）</span>
+            <span class="birthday-entry">
+              <a href={`${base}co/${comedian.id}`} class="birthday-name-link">{comedian.name}</a><span class="birthday-age">（{calculateAge(comedian.birth_date || '')}歳）</span>
+            </span>
           </>
         ))}
       </p>
@@ -379,6 +381,9 @@ function formatJpDateWithWeek(s?: string | null) {
     .birthday-list-inline {
       margin: 10px 0 8px 1.2em;
       line-height: 1.6;
+    }
+    .birthday-entry {
+      white-space: nowrap;
     }
     .birthday-name-link {
       color: var(--accent);
