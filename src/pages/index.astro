@@ -377,6 +377,22 @@ function formatJpDateWithWeek(s?: string | null) {
       align-items: start;
     }
 
+    /* スマホでは更新履歴を縦積みレイアウトに */
+    @media (max-width: 600px) {
+      .updates-item {
+        display: block;
+        margin-bottom: 16px;
+      }
+      .updates-date {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 0.9rem;
+      }
+      .updates-content {
+        display: block;
+      }
+    }
+
     /* 今日の誕生日芸人（1行形式） */
     .birthday-list-inline {
       margin: 10px 0 8px 1.2em;
