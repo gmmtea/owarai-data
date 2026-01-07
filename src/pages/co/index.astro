@@ -1607,22 +1607,33 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
 
   function updateCount(currentSort = 'reading', currentBase = 'today') {
     if (!countEl) return;
-    
     let visibleCount = 0;
-    
     if (currentSort === 'reading') {
-      // 読み仮名ビューの場合
-      visibleCount = coItems.filter(el => !el.hasAttribute('hidden')).length;
+      // 読み仮名ビューの場合、重複を除いたID数をカウント
+      const ids = new Set();
+      coItems.forEach(el => {
+        if (!el.hasAttribute('hidden')) {
+          const id = el.querySelector('a.co-link')?.getAttribute('href')?.replace(/.*\/(.+)$/, '$1');
+          if (id) ids.add(id);
+        }
+      });
+      visibleCount = ids.size;
     } else {
       // 年ごとビューの場合、現在表示されている基準のビューのみをカウント
       const currentBaseViewId = `${currentSort}-${currentBase}`;
       const currentBaseView = document.getElementById(currentBaseViewId);
       if (currentBaseView && currentBaseView.style.display !== 'none') {
+        const ids = new Set();
         const viewItems = Array.from(currentBaseView.querySelectorAll('.co-item'));
-        visibleCount = viewItems.filter(el => !el.hasAttribute('hidden')).length;
+        viewItems.forEach(el => {
+          if (!el.hasAttribute('hidden')) {
+            const id = el.querySelector('a.co-link')?.getAttribute('href')?.replace(/.*\/(.+)$/, '$1');
+            if (id) ids.add(id);
+          }
+        });
+        visibleCount = ids.size;
       }
     }
-    
     countEl.textContent = `（${visibleCount}件）`;
   }
 
