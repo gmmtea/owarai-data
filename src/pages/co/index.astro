@@ -317,6 +317,21 @@ function formatPeriodLabel(years: number, baseType: 'today' | 'april', sortType:
   }
 }
 
+/* ============================= 詳細表示用ヘルパー関数 ============================= */
+// 日付フォーマット（Y年M月D日）
+function formatDate(birthDate: string | null): string {
+  if (!birthDate) return "未設定";
+  
+  const date = parseDate(birthDate);
+  if (!date) return birthDate; // パースできない場合は元の文字列を返す
+  
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  
+  return `${year}年${month}月${day}日`;
+}
+
 /* ============================= 年ごとのソート機能 ============================= */
 // 年別グループ化（結成日順・誕生日順）
 type YearGroupedData = Record<string, Item[]>;
@@ -537,6 +552,13 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
         <button type="button" class="kind-tab" data-sort="formation">ユニット結成年順</button>
         <button type="button" class="kind-tab" data-sort="birthday">個人年齢順</button>
       </div>
+      
+      <!-- 詳細表示切り替え -->
+      <div id="detail-tabs" class="kind-tabs" data-detail="simple">
+        <span class="result-label">表示形式:</span>
+        <button type="button" class="kind-tab is-active" data-detail="simple">簡潔</button>
+        <button type="button" class="kind-tab" data-detail="detailed">詳細</button>
+      </div>
     </div>
     
     <div class="co-filter-row" id="base-filter-row" style="display: none;">
@@ -607,21 +629,55 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
           <h2 id={`row-${g.key}`}>{g.key}行</h2>
 
           {nonEmptySubs.map(([sub, arr]) => (
-            <p class="name-line">
-              <strong>{sub}</strong>:{" "}
-              {arr.map((it, i) => (
-                <span
-                  class="co-item"
-                  data-kind={it.kind}
-                  data-m1-rank={it.m1_rank_sort ?? ""}
-                  data-koc-rank={it.koc_rank_sort ?? ""}
-                  data-r1-rank={it.r1_rank_sort ?? ""}
-                >
-                  {i > 0 && " / "}
-                  <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
-                </span>
-              ))}
-            </p>
+            <div class="co-subsection">
+              {/* 簡潔表示 */}
+              <p class="name-line simple-view">
+                <strong>{sub}</strong>:{" "}
+                {arr.map((it, i) => (
+                  <span
+                    class="co-item"
+                    data-kind={it.kind}
+                    data-m1-rank={it.m1_rank_sort ?? ""}
+                    data-koc-rank={it.koc_rank_sort ?? ""}
+                    data-r1-rank={it.r1_rank_sort ?? ""}
+                  >
+                    {i > 0 && " / "}
+                    <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
+                  </span>
+                ))}
+              </p>
+
+              {/* 詳細表示 */}
+              <div class="detailed-view" style="display: none;">
+                <h3><strong>{sub}</strong></h3>
+                <div class="table-wrapper">
+                  <table class="co-detail-table">
+                    <thead>
+                      <tr>
+                        <th>芸人名</th>
+                        <th>{arr.some(it => it.kind === "unit") ? "結成日" : "誕生日"}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {arr.map((it) => (
+                        <tr
+                          class="co-item"
+                          data-kind={it.kind}
+                          data-m1-rank={it.m1_rank_sort ?? ""}
+                          data-koc-rank={it.koc_rank_sort ?? ""}
+                          data-r1-rank={it.r1_rank_sort ?? ""}
+                        >
+                          <td>
+                            <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
+                          </td>
+                          <td>{formatDate(enriched.find(r => r.id === it.id)?.birth_date || null)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
           ))}
         </section>
       );
@@ -631,20 +687,53 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
     {others.length > 0 && (
       <section class="co-row-section" data-row="others">
         <h2>その他</h2>
-        <p class="name-line">
-          {others.map((it, i) => (
-            <span
-              class="co-item"
-              data-kind={it.kind}
-              data-m1-rank={it.m1_rank_sort ?? ""}
-              data-koc-rank={it.koc_rank_sort ?? ""}
-              data-r1-rank={it.r1_rank_sort ?? ""}
-            >
-              {i > 0 && " / "}
-              <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
-            </span>
-          ))}
-        </p>
+        <div class="co-subsection">
+          {/* 簡潔表示 */}
+          <p class="name-line simple-view">
+            {others.map((it, i) => (
+              <span
+                class="co-item"
+                data-kind={it.kind}
+                data-m1-rank={it.m1_rank_sort ?? ""}
+                data-koc-rank={it.koc_rank_sort ?? ""}
+                data-r1-rank={it.r1_rank_sort ?? ""}
+              >
+                {i > 0 && " / "}
+                <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
+              </span>
+            ))}
+          </p>
+
+          {/* 詳細表示 */}
+          <div class="detailed-view" style="display: none;">
+            <div class="table-wrapper">
+              <table class="co-detail-table">
+                <thead>
+                  <tr>
+                    <th>芸人名</th>
+                    <th>誕生日/結成日</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {others.map((it) => (
+                    <tr
+                      class="co-item"
+                      data-kind={it.kind}
+                      data-m1-rank={it.m1_rank_sort ?? ""}
+                      data-koc-rank={it.koc_rank_sort ?? ""}
+                      data-r1-rank={it.r1_rank_sort ?? ""}
+                    >
+                      <td>
+                        <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
+                      </td>
+                      <td>{formatDate(enriched.find(r => r.id === it.id)?.birth_date || null)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       </section>
     )}
   </div>
@@ -662,8 +751,65 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
               {formatYearsLabel(years, 'today', 'formation')}
               <span class="period-label">{formatPeriodLabel(years, 'today', 'formation')}</span>
             </h2>
-            <p class="name-line">
-              {group.map((it, i) => (
+            <div class="co-subsection">
+              {/* 簡潔表示 */}
+              <p class="name-line simple-view">
+                {group.map((it, i) => (
+                  <span
+                    class="co-item"
+                    data-kind={it.kind}
+                    data-m1-rank={it.m1_rank_sort ?? ""}
+                    data-koc-rank={it.koc_rank_sort ?? ""}
+                    data-r1-rank={it.r1_rank_sort ?? ""}
+                  >
+                    {i > 0 && " / "}
+                    <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
+                  </span>
+                ))}
+              </p>
+
+              {/* 詳細表示 */}
+              <div class="detailed-view" style="display: none;">
+                <div class="table-wrapper">
+                  <table class="co-detail-table">
+                    <thead>
+                      <tr>
+                        <th>芸人名</th>
+                        <th>結成日</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.map((it) => (
+                        <tr
+                          class="co-item"
+                          data-kind={it.kind}
+                          data-m1-rank={it.m1_rank_sort ?? ""}
+                          data-koc-rank={it.koc_rank_sort ?? ""}
+                          data-r1-rank={it.r1_rank_sort ?? ""}
+                        >
+                          <td>
+                            <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
+                          </td>
+                          <td>{formatDate(it.birth_date || null)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </section>
+        );
+      })}
+
+      {/* 未設定グループ（結成日・今日基準） */}
+      {formationUnknownGroup.length > 0 && (
+        <section class="co-row">
+          <h2 id="formation-today-unknown">その他（未設定）</h2>
+          <div class="co-subsection">
+            {/* 簡潔表示 */}
+            <p class="name-line simple-view">
+              {formationUnknownGroup.map((it, i) => (
                 <span
                   class="co-item"
                   data-kind={it.kind}
@@ -676,28 +822,37 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
                 </span>
               ))}
             </p>
-          </section>
-        );
-      })}
-      
-      {/* 未設定グループ（結成日・今日基準） */}
-      {formationUnknownGroup.length > 0 && (
-        <section class="co-row">
-          <h2 id="formation-today-unknown">その他（未設定）</h2>
-          <p class="name-line">
-            {formationUnknownGroup.map((it, i) => (
-              <span
-                class="co-item"
-                data-kind={it.kind}
-                data-m1-rank={it.m1_rank_sort ?? ""}
-                data-koc-rank={it.koc_rank_sort ?? ""}
-                data-r1-rank={it.r1_rank_sort ?? ""}
-              >
-                {i > 0 && " / "}
-                <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
-              </span>
-            ))}
-          </p>
+
+            {/* 詳細表示 */}
+            <div class="detailed-view" style="display: none;">
+              <div class="table-wrapper">
+                <table class="co-detail-table">
+                  <thead>
+                    <tr>
+                      <th>芸人名</th>
+                      <th>結成日</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {formationUnknownGroup.map((it) => (
+                      <tr
+                        class="co-item"
+                        data-kind={it.kind}
+                        data-m1-rank={it.m1_rank_sort ?? ""}
+                        data-koc-rank={it.koc_rank_sort ?? ""}
+                        data-r1-rank={it.r1_rank_sort ?? ""}
+                      >
+                        <td>
+                          <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
+                        </td>
+                        <td>未設定</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </section>
       )}
     </div>
@@ -713,8 +868,65 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
               {formatYearsLabel(years, 'april', 'formation')}
               <span class="period-label">{formatPeriodLabel(years, 'april', 'formation')}</span>
             </h2>
-            <p class="name-line">
-              {group.map((it, i) => (
+            <div class="co-subsection">
+              {/* 簡潔表示 */}
+              <p class="name-line simple-view">
+                {group.map((it, i) => (
+                  <span
+                    class="co-item"
+                    data-kind={it.kind}
+                    data-m1-rank={it.m1_rank_sort ?? ""}
+                    data-koc-rank={it.koc_rank_sort ?? ""}
+                    data-r1-rank={it.r1_rank_sort ?? ""}
+                  >
+                    {i > 0 && " / "}
+                    <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
+                  </span>
+                ))}
+              </p>
+
+              {/* 詳細表示 */}
+              <div class="detailed-view" style="display: none;">
+                <div class="table-wrapper">
+                  <table class="co-detail-table">
+                    <thead>
+                      <tr>
+                        <th>芸人名</th>
+                        <th>結成日</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.map((it) => (
+                        <tr
+                          class="co-item"
+                          data-kind={it.kind}
+                          data-m1-rank={it.m1_rank_sort ?? ""}
+                          data-koc-rank={it.koc_rank_sort ?? ""}
+                          data-r1-rank={it.r1_rank_sort ?? ""}
+                        >
+                          <td>
+                            <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
+                          </td>
+                          <td>{formatDate(it.birth_date || null)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </section>
+        );
+      })}
+      
+      {/* 未設定グループ（結成日・4月基準） */}
+      {formationUnknownGroup.length > 0 && (
+        <section class="co-row">
+          <h2 id="formation-april-unknown">その他（未設定）</h2>
+          <div class="co-subsection">
+            {/* 簡潔表示 */}
+            <p class="name-line simple-view">
+              {formationUnknownGroup.map((it, i) => (
                 <span
                   class="co-item"
                   data-kind={it.kind}
@@ -727,28 +939,37 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
                 </span>
               ))}
             </p>
-          </section>
-        );
-      })}
-      
-      {/* 未設定グループ（結成日・4月基準） */}
-      {formationUnknownGroup.length > 0 && (
-        <section class="co-row">
-          <h2 id="formation-april-unknown">その他（未設定）</h2>
-          <p class="name-line">
-            {formationUnknownGroup.map((it, i) => (
-              <span
-                class="co-item"
-                data-kind={it.kind}
-                data-m1-rank={it.m1_rank_sort ?? ""}
-                data-koc-rank={it.koc_rank_sort ?? ""}
-                data-r1-rank={it.r1_rank_sort ?? ""}
-              >
-                {i > 0 && " / "}
-                <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
-              </span>
-            ))}
-          </p>
+
+            {/* 詳細表示 */}
+            <div class="detailed-view" style="display: none;">
+              <div class="table-wrapper">
+                <table class="co-detail-table">
+                  <thead>
+                    <tr>
+                      <th>芸人名</th>
+                      <th>結成日</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {formationUnknownGroup.map((it) => (
+                      <tr
+                        class="co-item"
+                        data-kind={it.kind}
+                        data-m1-rank={it.m1_rank_sort ?? ""}
+                        data-koc-rank={it.koc_rank_sort ?? ""}
+                        data-r1-rank={it.r1_rank_sort ?? ""}
+                      >
+                        <td>
+                          <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
+                        </td>
+                        <td>未設定</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </section>
       )}
     </div>
@@ -767,8 +988,65 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
               {formatYearsLabel(years, 'today', 'birthday')}
               <span class="period-label">{formatPeriodLabel(years, 'today', 'birthday')}</span>
             </h2>
-            <p class="name-line">
-              {group.map((it, i) => (
+            <div class="co-subsection">
+              {/* 簡潔表示 */}
+              <p class="name-line simple-view">
+                {group.map((it, i) => (
+                  <span
+                    class="co-item"
+                    data-kind={it.kind}
+                    data-m1-rank={it.m1_rank_sort ?? ""}
+                    data-koc-rank={it.koc_rank_sort ?? ""}
+                    data-r1-rank={it.r1_rank_sort ?? ""}
+                  >
+                    {i > 0 && " / "}
+                    <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
+                  </span>
+                ))}
+              </p>
+
+              {/* 詳細表示 */}
+              <div class="detailed-view" style="display: none;">
+                <div class="table-wrapper">
+                  <table class="co-detail-table">
+                    <thead>
+                      <tr>
+                        <th>芸人名</th>
+                        <th>誕生日</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.map((it) => (
+                        <tr
+                          class="co-item"
+                          data-kind={it.kind}
+                          data-m1-rank={it.m1_rank_sort ?? ""}
+                          data-koc-rank={it.koc_rank_sort ?? ""}
+                          data-r1-rank={it.r1_rank_sort ?? ""}
+                        >
+                          <td>
+                            <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
+                          </td>
+                          <td>{formatDate(enriched.find(r => r.id === it.id)?.birth_date || null)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </section>
+        );
+      })}
+      
+      {/* 未設定グループ（誕生日・今日基準） */}
+      {birthdayUnknownGroup.length > 0 && (
+        <section class="co-row">
+          <h2 id="birthday-today-unknown">その他（未設定）</h2>
+          <div class="co-subsection">
+            {/* 簡潔表示 */}
+            <p class="name-line simple-view">
+              {birthdayUnknownGroup.map((it, i) => (
                 <span
                   class="co-item"
                   data-kind={it.kind}
@@ -781,28 +1059,37 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
                 </span>
               ))}
             </p>
-          </section>
-        );
-      })}
-      
-      {/* 未設定グループ（誕生日・今日基準） */}
-      {birthdayUnknownGroup.length > 0 && (
-        <section class="co-row">
-          <h2 id="birthday-today-unknown">その他（未設定）</h2>
-          <p class="name-line">
-            {birthdayUnknownGroup.map((it, i) => (
-              <span
-                class="co-item"
-                data-kind={it.kind}
-                data-m1-rank={it.m1_rank_sort ?? ""}
-                data-koc-rank={it.koc_rank_sort ?? ""}
-                data-r1-rank={it.r1_rank_sort ?? ""}
-              >
-                {i > 0 && " / "}
-                <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
-              </span>
-            ))}
-          </p>
+
+            {/* 詳細表示 */}
+            <div class="detailed-view" style="display: none;">
+              <div class="table-wrapper">
+                <table class="co-detail-table">
+                  <thead>
+                    <tr>
+                      <th>芸人名</th>
+                      <th>誕生日</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {birthdayUnknownGroup.map((it) => (
+                      <tr
+                        class="co-item"
+                        data-kind={it.kind}
+                        data-m1-rank={it.m1_rank_sort ?? ""}
+                        data-koc-rank={it.koc_rank_sort ?? ""}
+                        data-r1-rank={it.r1_rank_sort ?? ""}
+                      >
+                        <td>
+                          <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
+                        </td>
+                        <td>未設定</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </section>
       )}
     </div>
@@ -818,8 +1105,65 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
               {formatYearsLabel(years, 'april', 'birthday')}
               <span class="period-label">{formatPeriodLabel(years, 'april', 'birthday')}</span>
             </h2>
-            <p class="name-line">
-              {group.map((it, i) => (
+            <div class="co-subsection">
+              {/* 簡潔表示 */}
+              <p class="name-line simple-view">
+                {group.map((it, i) => (
+                  <span
+                    class="co-item"
+                    data-kind={it.kind}
+                    data-m1-rank={it.m1_rank_sort ?? ""}
+                    data-koc-rank={it.koc_rank_sort ?? ""}
+                    data-r1-rank={it.r1_rank_sort ?? ""}
+                  >
+                    {i > 0 && " / "}
+                    <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
+                  </span>
+                ))}
+              </p>
+
+              {/* 詳細表示 */}
+              <div class="detailed-view" style="display: none;">
+                <div class="table-wrapper">
+                  <table class="co-detail-table">
+                    <thead>
+                      <tr>
+                        <th>芸人名</th>
+                        <th>誕生日</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.map((it) => (
+                        <tr
+                          class="co-item"
+                          data-kind={it.kind}
+                          data-m1-rank={it.m1_rank_sort ?? ""}
+                          data-koc-rank={it.koc_rank_sort ?? ""}
+                          data-r1-rank={it.r1_rank_sort ?? ""}
+                        >
+                          <td>
+                            <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
+                          </td>
+                          <td>{formatDate(enriched.find(r => r.id === it.id)?.birth_date || null)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </section>
+        );
+      })}
+      
+      {/* 未設定グループ（誕生日・4月基準） */}
+      {birthdayUnknownGroup.length > 0 && (
+        <section class="co-row">
+          <h2 id="birthday-april-unknown">その他（未設定）</h2>
+          <div class="co-subsection">
+            {/* 簡潔表示 */}
+            <p class="name-line simple-view">
+              {birthdayUnknownGroup.map((it, i) => (
                 <span
                   class="co-item"
                   data-kind={it.kind}
@@ -832,28 +1176,37 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
                 </span>
               ))}
             </p>
-          </section>
-        );
-      })}
-      
-      {/* 未設定グループ（誕生日・4月基準） */}
-      {birthdayUnknownGroup.length > 0 && (
-        <section class="co-row">
-          <h2 id="birthday-april-unknown">その他（未設定）</h2>
-          <p class="name-line">
-            {birthdayUnknownGroup.map((it, i) => (
-              <span
-                class="co-item"
-                data-kind={it.kind}
-                data-m1-rank={it.m1_rank_sort ?? ""}
-                data-koc-rank={it.koc_rank_sort ?? ""}
-                data-r1-rank={it.r1_rank_sort ?? ""}
-              >
-                {i > 0 && " / "}
-                <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
-              </span>
-            ))}
-          </p>
+
+            {/* 詳細表示 */}
+            <div class="detailed-view" style="display: none;">
+              <div class="table-wrapper">
+                <table class="co-detail-table">
+                  <thead>
+                    <tr>
+                      <th>芸人名</th>
+                      <th>誕生日</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {birthdayUnknownGroup.map((it) => (
+                      <tr
+                        class="co-item"
+                        data-kind={it.kind}
+                        data-m1-rank={it.m1_rank_sort ?? ""}
+                        data-koc-rank={it.koc_rank_sort ?? ""}
+                        data-r1-rank={it.r1_rank_sort ?? ""}
+                      >
+                        <td>
+                          <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
+                        </td>
+                        <td>未設定</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </section>
       )}
     </div>
@@ -873,6 +1226,103 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
     font-weight: normal;
     color: var(--muted, #666);
     margin-left: 0.5rem;
+  }
+
+  /* 詳細表示用のスタイル */
+  .co-subsection {
+    margin-bottom: 1rem;
+  }
+  
+  .detailed-view h3 {
+    margin: 0.5rem 0 0.75rem;
+    font-size: 1.05rem;
+    font-weight: 600;
+  }
+  
+  .table-wrapper {
+    overflow-x: auto;
+    margin: 0.5rem 0 1rem;
+    border: 1px solid var(--border, #e0e0e0);
+    border-radius: 6px;
+    max-width: 800px; /* テーブル幅を制限 */
+  }
+  
+  .co-detail-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    font-size: 0.9rem;
+    table-layout: fixed; /* 固定レイアウトで列幅を統一 */
+  }
+  
+  .co-detail-table th,
+  .co-detail-table td {
+    padding: 0.5rem; /* パディングを調整 */
+    text-align: left;
+    border-bottom: 1px solid var(--border, #e0e0e0);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  .co-detail-table th {
+    background: var(--bg-weak, #f8f9fa);
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--text-strong, #333);
+    white-space: nowrap;
+  }
+  
+  .co-detail-table tbody tr:hover {
+    background: var(--bg-hover, #fff4e6);
+  }
+  
+  .co-detail-table tbody tr:last-child td {
+    border-bottom: none;
+  }
+  
+  .co-detail-table td:first-child {
+    font-weight: 500;
+    width: 50%; /* 芸人名: 50% */
+  }
+  
+  .co-detail-table td:nth-child(2) {
+    font-feature-settings: "tnum";
+    white-space: nowrap;
+    width: 50%; /* 日付: 50% */
+    color: var(--text-secondary, #555);
+    font-size: 0.9rem;
+  }
+
+  .co-detail-table .co-link {
+    text-decoration: none;
+    color: var(--accent, #0066cc);
+    border-bottom: 1px dotted currentColor;
+  }
+  
+  .co-detail-table .co-link:hover {
+    color: var(--accent-strong, #0052a3);
+  }
+
+  /* モバイル対応 */
+  @media (max-width: 640px) {
+    .co-detail-table {
+      font-size: 0.8rem;
+    }
+    
+    .co-detail-table th,
+    .co-detail-table td {
+      padding: 0.4rem 0.5rem;
+    }
+    
+    .co-detail-table th {
+      font-size: 0.75rem;
+    }
+    
+    .co-filter-row {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.5rem;
+    }
   }
 
   .kind-tabs {
@@ -940,6 +1390,7 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
   const RESULT_ALLOWED = ['any', 'quarter', 'semi', 'final', 'win'];
   const SORT_ALLOWED = ['reading', 'formation', 'birthday'];
   const BASE_ALLOWED = ['today', 'april'];
+  const DETAIL_ALLOWED = ['simple', 'detailed'];
 
   const nameLines = Array.from(
     document.querySelectorAll('.name-line')
@@ -949,6 +1400,20 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
     document.querySelectorAll('#reading-view .co-item')
   );
   const countEl = document.getElementById('co-count');
+
+  // 詳細表示の切り替え
+  function showDetailView(detailType) {
+    const simpleViews = Array.from(document.querySelectorAll('.simple-view'));
+    const detailedViews = Array.from(document.querySelectorAll('.detailed-view'));
+    
+    if (detailType === 'detailed') {
+      simpleViews.forEach(el => el.style.display = 'none');
+      detailedViews.forEach(el => el.style.display = 'block');
+    } else {
+      simpleViews.forEach(el => el.style.display = 'block');
+      detailedViews.forEach(el => el.style.display = 'none');
+    }
+  }
 
   // ソート表示の切り替え
   function showSortView(sortType, baseType = 'today') {
@@ -1044,7 +1509,7 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
   }
 
   function readStateFromUrlAndStorage() {
-    const def = { sort: 'reading', base: 'today', kind: 'all', m1: 'any', koc: 'any', r1: 'any' };
+    const def = { sort: 'reading', base: 'today', kind: 'all', m1: 'any', koc: 'any', r1: 'any', detail: 'simple' };
 
     try {
       const url = new URL(location.href);
@@ -1054,6 +1519,7 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
       const m1Q   = url.searchParams.get('m1');
       const kocQ  = url.searchParams.get('koc');
       const r1Q   = url.searchParams.get('r1');
+      const detailQ = url.searchParams.get('detail');
 
       const fromUrl = {
         sort: SORT_ALLOWED.includes(sortQ || '') ? sortQ : null,
@@ -1062,8 +1528,9 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
         m1:   RESULT_ALLOWED.includes(m1Q || '') ? m1Q   : null,
         koc:  RESULT_ALLOWED.includes(kocQ || '') ? kocQ : null,
         r1:   RESULT_ALLOWED.includes(r1Q || '') ? r1Q   : null,
+        detail: DETAIL_ALLOWED.includes(detailQ || '') ? detailQ : null,
       };
-      if (fromUrl.sort || fromUrl.base || fromUrl.kind || fromUrl.m1 || fromUrl.koc || fromUrl.r1) {
+      if (fromUrl.sort || fromUrl.base || fromUrl.kind || fromUrl.m1 || fromUrl.koc || fromUrl.r1 || fromUrl.detail) {
         return {
           sort: fromUrl.sort || def.sort,
           base: fromUrl.base || def.base,
@@ -1071,6 +1538,7 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
           m1:   fromUrl.m1   || def.m1,
           koc:  fromUrl.koc  || def.koc,
           r1:   fromUrl.r1   || def.r1,
+          detail: fromUrl.detail || def.detail,
         };
       }
     } catch (_) {}
@@ -1085,7 +1553,8 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
         const m1   = RESULT_ALLOWED.includes(parsed.m1) ? parsed.m1   : def.m1;
         const koc  = RESULT_ALLOWED.includes(parsed.koc) ? parsed.koc : def.koc;
         const r1   = RESULT_ALLOWED.includes(parsed.r1) ? parsed.r1 : def.r1;
-        return { sort, base, kind, m1, koc, r1 };
+        const detail = DETAIL_ALLOWED.includes(parsed.detail) ? parsed.detail : def.detail;
+        return { sort, base, kind, m1, koc, r1, detail };
       }
     } catch (_) {}
 
@@ -1101,6 +1570,7 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
       url.searchParams.set('m1',   state.m1);
       url.searchParams.set('koc',  state.koc);
       url.searchParams.set('r1',   state.r1);
+      url.searchParams.set('detail', state.detail);
       history.replaceState(null, '', url);
     } catch (_) {}
 
@@ -1206,6 +1676,9 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
     updateSeparatorsAndEmptyLines();
     updateRowSectionVisibility();
     updateCount(state.sort, state.base);
+    
+    // 詳細表示の切り替えを適用
+    showDetailView(state.detail);
   }
 
   function setActiveTab(container, attrName, value) {
@@ -1224,6 +1697,7 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
     setActiveTab(document.getElementById('m1-tabs'),   'm1',   state.m1);
     setActiveTab(document.getElementById('koc-tabs'),  'koc',  state.koc);
     setActiveTab(document.getElementById('r1-tabs'),   'r1',   state.r1);
+    setActiveTab(document.getElementById('detail-tabs'), 'detail', state.detail);
   }
 
   function setupFilter() {
@@ -1233,7 +1707,8 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
     const m1Wrap   = document.getElementById('m1-tabs');
     const kocWrap  = document.getElementById('koc-tabs');
     const r1Wrap   = document.getElementById('r1-tabs');
-    if (!sortWrap || !baseWrap || !kindWrap || !m1Wrap || !kocWrap || !r1Wrap) return;
+    const detailWrap = document.getElementById('detail-tabs');
+    if (!sortWrap || !baseWrap || !kindWrap || !m1Wrap || !kocWrap || !r1Wrap || !detailWrap) return;
 
     let state = readStateFromUrlAndStorage();
     syncTabs(state);
@@ -1295,6 +1770,13 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
     wireTabs(r1Wrap, 'r1', (v) => {
       state = { ...state, r1: v };
       setActiveTab(r1Wrap, 'r1', v);
+      writeStateToUrlAndStorage(state);
+      applyFilter(state);
+    });
+
+    wireTabs(detailWrap, 'detail', (v) => {
+      state = { ...state, detail: v };
+      setActiveTab(detailWrap, 'detail', v);
       writeStateToUrlAndStorage(state);
       applyFilter(state);
     });
