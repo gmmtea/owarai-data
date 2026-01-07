@@ -28,39 +28,34 @@ function formatJpDateWithWeek(s?: string | null) {
   {updates.length === 0 ? (
     <p class="muted">更新履歴はまだありません。</p>
   ) : (
-    <table class="updates-table">
-      <thead>
-        <tr>
-          <th>日付</th>
-          <th>内容</th>
-        </tr>
-      </thead>
-      <tbody>
-        {updates.map((u) => (
+    <div class="table-wrap">
+      <table>
+        <thead>
           <tr>
-            <td class="date">{formatJpDateWithWeek(u.date)}</td>
-            <td class="content"><span class="preline">{u.content}</span></td>
+            <th class="col-date">日付</th>
+            <th class="col-content">内容</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {updates.map((u) => (
+            <tr>
+              <td class="col-date">{formatJpDateWithWeek(u.date)}</td>
+              <td class="col-content multiline">{u.content}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )}
 
   <style>
-    .updates-table { width: 100%; border-collapse: collapse; }
-    .updates-table th, .updates-table td {
-      padding: 8px;
-      border-bottom: 1px solid var(--border, #ddd);
-      vertical-align: top;
-      text-align: left;
+    .col-date { 
+      min-width: 140px; 
+      white-space: nowrap; 
+      font-variant-numeric: tabular-nums; 
     }
-    .updates-table th {
-      position: sticky;
-      top: 0;
-      background: var(--card-bg, #fff);
-      z-index: 1;
+    .col-content { 
+      min-width: 200px; 
     }
-    .date { white-space: nowrap; }
-    .preline { white-space: pre-line; }
   </style>
 </Base>
