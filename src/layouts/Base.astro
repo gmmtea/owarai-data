@@ -1,8 +1,12 @@
 ---
 import globalCss from '../styles/global.css?inline';
 import { listCompetitions } from "../lib/queries";
-const { title = "お笑い主要データまとめ", description = "お笑い芸人やお笑い賞レースの記録を横断して参照できる非公式データ集です。" } = Astro.props;
+const { title = "", description = "お笑い芸人やお笑い賞レースの記録を横断して参照できる非公式データ集です。" } = Astro.props;
 const siteTitle = "お笑い主要データまとめ";
+// titleが空またはsiteTitleのみならsiteTitleだけ、そうでなければ「固有タイトル｜お笑い主要データまとめ」
+const fullTitle = !title || title === siteTitle
+  ? siteTitle
+  : `${title}｜${siteTitle}`;
 const base = import.meta.env.BASE_URL;
 const comps = listCompetitions(); // [{key,name,sort_order}, ...]
 const canonical = new URL(Astro.url.pathname, Astro.site).href;
@@ -12,7 +16,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href;
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-    <title>{title}</title>
+  <title>{fullTitle}</title>
     <meta name="description" content={description} />
     
     <!-- Favicon設定 - Google検索での表示を改善 -->
@@ -24,7 +28,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href;
 		<link rel="canonical" href={canonical} />
     <meta name="format-detection" content="telephone=no" />
     <!-- 共有時のOGP（必要なら調整） -->
-    <meta property="og:title" content={title} />
+  <meta property="og:title" content={fullTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:type" content="website" />
     <meta property="og:image" content={new URL(`${base}warai_3.png`, Astro.site).href} />
