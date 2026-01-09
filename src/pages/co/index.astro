@@ -1,6 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { listComediansCanonicalOnlyWithRelatedRanksAndBirthDate } from "../../lib/queries";
+import { listComediansCanonicalOnlyWithRelatedRanksAndBirthDate, getFormationYearRange } from "../../lib/queries";
 
 const base = import.meta.env.BASE_URL;
 
@@ -83,6 +83,7 @@ const rowSubs: Record<string, string[]> = {
 
 /* ============================= データ取得と整形 ============================= */
 const raw = listComediansCanonicalOnlyWithRelatedRanksAndBirthDate();
+const formationYearRange = getFormationYearRange();
 
 // 1) 読みを付与
 const enriched = raw.map(r => {
@@ -93,7 +94,8 @@ const enriched = raw.map(r => {
     kind: r.kind as "unit" | "person",
     m1_rank_sort: r.m1_rank_sort,
     koc_rank_sort: r.koc_rank_sort,
-    r1_rank_sort: r.r1_rank_sort
+    r1_rank_sort: r.r1_rank_sort,
+    birth_year: r.birth_year
   };
 });
 
@@ -134,7 +136,8 @@ for (const r of enriched) {
       kind: r.kind,
       m1_rank_sort: r.m1_rank_sort,
       koc_rank_sort: r.koc_rank_sort,
-      r1_rank_sort: r.r1_rank_sort
+      r1_rank_sort: r.r1_rank_sort,
+      birth_year: r.birth_year
     });
     continue;
   }
@@ -156,7 +159,8 @@ for (const r of enriched) {
     kind: r.kind,
     m1_rank_sort: r.m1_rank_sort,
     koc_rank_sort: r.koc_rank_sort,
-    r1_rank_sort: r.r1_rank_sort
+    r1_rank_sort: r.r1_rank_sort,
+    birth_year: r.birth_year
   });
 }
 
@@ -612,6 +616,39 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
         <button type="button" class="kind-tab" data-r1="win">優勝</button>
       </div>
     </div>
+
+    <div class="co-filter-row">
+      <!-- 結成年スライダー -->
+      <div class="formation-year-filter">
+        <span class="result-label">ユニット結成年:</span>
+        <div class="slider-container">
+          <div id="formation-year-slider" class="year-slider"></div>
+          <div class="slider-values">
+            <span id="formation-year-min">{formationYearRange.min}</span>
+            <span> 〜 </span>
+            <span id="formation-year-max">{formationYearRange.max}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="co-filter-row">
+      <!-- その他を含むかどうか -->
+      <div class="include-others-filter">
+        <button
+          id="include-others"
+          class="rel-switch-row"
+          type="button"
+          role="switch"
+          aria-checked="true"
+        >
+          <span class="rel-switch-label">その他（結成年未設定）を含む</span>
+          <span class="rel-switch-track" aria-hidden="true">
+            <span class="rel-switch-knob" aria-hidden="true"></span>
+          </span>
+        </button>
+      </div>
+    </div>
   </div>
 
   <!-- 五十音順の表示 -->
@@ -640,6 +677,9 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
                     data-m1-rank={it.m1_rank_sort ?? ""}
                     data-koc-rank={it.koc_rank_sort ?? ""}
                     data-r1-rank={it.r1_rank_sort ?? ""}
+                          data-birth-year={it.birth_year ?? ""}
+                    data-birth-year={it.birth_year ?? ""}
+                    data-birth-year={it.birth_year ?? ""}
                   >
                     {i > 0 && " / "}
                     <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
@@ -666,6 +706,9 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
                           data-m1-rank={it.m1_rank_sort ?? ""}
                           data-koc-rank={it.koc_rank_sort ?? ""}
                           data-r1-rank={it.r1_rank_sort ?? ""}
+                          data-birth-year={it.birth_year ?? ""}
+                    data-birth-year={it.birth_year ?? ""}
+                          data-birth-year={it.birth_year ?? ""}
                         >
                           <td>
                             <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
@@ -697,6 +740,9 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
                 data-m1-rank={it.m1_rank_sort ?? ""}
                 data-koc-rank={it.koc_rank_sort ?? ""}
                 data-r1-rank={it.r1_rank_sort ?? ""}
+                          data-birth-year={it.birth_year ?? ""}
+                    data-birth-year={it.birth_year ?? ""}
+                data-birth-year={it.birth_year ?? ""}
               >
                 {i > 0 && " / "}
                 <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
@@ -722,6 +768,9 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
                       data-m1-rank={it.m1_rank_sort ?? ""}
                       data-koc-rank={it.koc_rank_sort ?? ""}
                       data-r1-rank={it.r1_rank_sort ?? ""}
+                          data-birth-year={it.birth_year ?? ""}
+                    data-birth-year={it.birth_year ?? ""}
+                      data-birth-year={it.birth_year ?? ""}
                     >
                       <td>
                         <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
@@ -761,6 +810,9 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
                     data-m1-rank={it.m1_rank_sort ?? ""}
                     data-koc-rank={it.koc_rank_sort ?? ""}
                     data-r1-rank={it.r1_rank_sort ?? ""}
+                          data-birth-year={it.birth_year ?? ""}
+                    data-birth-year={it.birth_year ?? ""}
+                    data-birth-year={it.birth_year ?? ""}
                   >
                     {i > 0 && " / "}
                     <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
@@ -786,6 +838,9 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
                           data-m1-rank={it.m1_rank_sort ?? ""}
                           data-koc-rank={it.koc_rank_sort ?? ""}
                           data-r1-rank={it.r1_rank_sort ?? ""}
+                          data-birth-year={it.birth_year ?? ""}
+                    data-birth-year={it.birth_year ?? ""}
+                          data-birth-year={it.birth_year ?? ""}
                         >
                           <td>
                             <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
@@ -816,6 +871,8 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
                   data-m1-rank={it.m1_rank_sort ?? ""}
                   data-koc-rank={it.koc_rank_sort ?? ""}
                   data-r1-rank={it.r1_rank_sort ?? ""}
+                          data-birth-year={it.birth_year ?? ""}
+                    data-birth-year={it.birth_year ?? ""}
                 >
                   {i > 0 && " / "}
                   <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
@@ -841,6 +898,8 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
                         data-m1-rank={it.m1_rank_sort ?? ""}
                         data-koc-rank={it.koc_rank_sort ?? ""}
                         data-r1-rank={it.r1_rank_sort ?? ""}
+                          data-birth-year={it.birth_year ?? ""}
+                    data-birth-year={it.birth_year ?? ""}
                       >
                         <td>
                           <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
@@ -878,6 +937,8 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
                     data-m1-rank={it.m1_rank_sort ?? ""}
                     data-koc-rank={it.koc_rank_sort ?? ""}
                     data-r1-rank={it.r1_rank_sort ?? ""}
+                          data-birth-year={it.birth_year ?? ""}
+                    data-birth-year={it.birth_year ?? ""}
                   >
                     {i > 0 && " / "}
                     <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
@@ -903,6 +964,8 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
                           data-m1-rank={it.m1_rank_sort ?? ""}
                           data-koc-rank={it.koc_rank_sort ?? ""}
                           data-r1-rank={it.r1_rank_sort ?? ""}
+                          data-birth-year={it.birth_year ?? ""}
+                    data-birth-year={it.birth_year ?? ""}
                         >
                           <td>
                             <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
@@ -933,6 +996,8 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
                   data-m1-rank={it.m1_rank_sort ?? ""}
                   data-koc-rank={it.koc_rank_sort ?? ""}
                   data-r1-rank={it.r1_rank_sort ?? ""}
+                          data-birth-year={it.birth_year ?? ""}
+                    data-birth-year={it.birth_year ?? ""}
                 >
                   {i > 0 && " / "}
                   <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
@@ -958,6 +1023,8 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
                         data-m1-rank={it.m1_rank_sort ?? ""}
                         data-koc-rank={it.koc_rank_sort ?? ""}
                         data-r1-rank={it.r1_rank_sort ?? ""}
+                          data-birth-year={it.birth_year ?? ""}
+                    data-birth-year={it.birth_year ?? ""}
                       >
                         <td>
                           <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
@@ -998,6 +1065,8 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
                     data-m1-rank={it.m1_rank_sort ?? ""}
                     data-koc-rank={it.koc_rank_sort ?? ""}
                     data-r1-rank={it.r1_rank_sort ?? ""}
+                          data-birth-year={it.birth_year ?? ""}
+                    data-birth-year={it.birth_year ?? ""}
                   >
                     {i > 0 && " / "}
                     <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
@@ -1023,6 +1092,8 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
                           data-m1-rank={it.m1_rank_sort ?? ""}
                           data-koc-rank={it.koc_rank_sort ?? ""}
                           data-r1-rank={it.r1_rank_sort ?? ""}
+                          data-birth-year={it.birth_year ?? ""}
+                    data-birth-year={it.birth_year ?? ""}
                         >
                           <td>
                             <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
@@ -1053,6 +1124,8 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
                   data-m1-rank={it.m1_rank_sort ?? ""}
                   data-koc-rank={it.koc_rank_sort ?? ""}
                   data-r1-rank={it.r1_rank_sort ?? ""}
+                          data-birth-year={it.birth_year ?? ""}
+                    data-birth-year={it.birth_year ?? ""}
                 >
                   {i > 0 && " / "}
                   <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
@@ -1078,6 +1151,8 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
                         data-m1-rank={it.m1_rank_sort ?? ""}
                         data-koc-rank={it.koc_rank_sort ?? ""}
                         data-r1-rank={it.r1_rank_sort ?? ""}
+                          data-birth-year={it.birth_year ?? ""}
+                    data-birth-year={it.birth_year ?? ""}
                       >
                         <td>
                           <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
@@ -1115,6 +1190,8 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
                     data-m1-rank={it.m1_rank_sort ?? ""}
                     data-koc-rank={it.koc_rank_sort ?? ""}
                     data-r1-rank={it.r1_rank_sort ?? ""}
+                          data-birth-year={it.birth_year ?? ""}
+                    data-birth-year={it.birth_year ?? ""}
                   >
                     {i > 0 && " / "}
                     <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
@@ -1140,6 +1217,8 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
                           data-m1-rank={it.m1_rank_sort ?? ""}
                           data-koc-rank={it.koc_rank_sort ?? ""}
                           data-r1-rank={it.r1_rank_sort ?? ""}
+                          data-birth-year={it.birth_year ?? ""}
+                    data-birth-year={it.birth_year ?? ""}
                         >
                           <td>
                             <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
@@ -1170,6 +1249,8 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
                   data-m1-rank={it.m1_rank_sort ?? ""}
                   data-koc-rank={it.koc_rank_sort ?? ""}
                   data-r1-rank={it.r1_rank_sort ?? ""}
+                          data-birth-year={it.birth_year ?? ""}
+                    data-birth-year={it.birth_year ?? ""}
                 >
                   {i > 0 && " / "}
                   <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
@@ -1195,6 +1276,8 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
                         data-m1-rank={it.m1_rank_sort ?? ""}
                         data-koc-rank={it.koc_rank_sort ?? ""}
                         data-r1-rank={it.r1_rank_sort ?? ""}
+                          data-birth-year={it.birth_year ?? ""}
+                    data-birth-year={it.birth_year ?? ""}
                       >
                         <td>
                           <a class="co-link" href={`${base}co/${it.id}`}>{it.name}</a>
@@ -1385,10 +1468,138 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
   .name-line.is-empty {
     display: none;
   }
+
+  /* 結成年スライダー */
+  .formation-year-filter {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .slider-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-width: 300px;
+    flex: 1;
+  }
+
+  .year-slider {
+    height: 8px;
+  }
+
+  .slider-values {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+
+  /* noUiSlider カスタムスタイル */
+  /* 接続部分（選択された範囲）の色をテーマカラーに */
+  :global(.year-slider .noUi-connect) {
+    background: var(--accent, #f97316);
+    height: 6px;
+    top: 0;
+  }
+
+  /* つまみの位置を中央に調整 */
+  :global(.year-slider .noUi-handle) {
+    top: -7px;
+  }
+
+  /* スライダーバーの背景色 */
+  :global(.year-slider .noUi-target) {
+    background: #e5e7eb;
+    border: none;
+    box-shadow: none;
+    height: 10px;
+  }
+  
+  :global(.year-slider .noUi-base) {
+    height: 10px;
+  }
+
+
+  /* ツールチップ（オプション） */
+  .year-slider .noUi-tooltip {
+    display: none;
+  }
+
+  /* トグルボタンスタイル（芸人詳細ページと同じデザイン） */
+  .rel-switch-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    border: 1px solid var(--border);
+    background: #fff;
+    border-radius: 999px;
+    padding: 6px 10px;
+    cursor: pointer;
+  }
+
+  .rel-switch-row:hover {
+    background: color-mix(in srgb, var(--accent-weak) 55%, #fff);
+  }
+
+  .rel-switch-row:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--accent) 55%, #fff);
+    outline-offset: 2px;
+  }
+
+  .rel-switch-label {
+    color: var(--muted);
+    font-size: 13px;
+    user-select: none;
+    white-space: nowrap;
+  }
+
+  .rel-switch-track {
+    position: relative;
+    width: 40px;
+    height: 22px;
+    border-radius: 999px;
+    background: var(--accent-weak);
+    border: 1px solid var(--border);
+    transition: background 120ms ease, border-color 120ms ease;
+    flex: 0 0 auto;
+  }
+
+  .rel-switch-knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    border: 1px solid var(--border);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+    transition: transform 140ms ease, border-color 120ms ease;
+  }
+
+  .rel-switch-row[aria-checked="true"] .rel-switch-track {
+    background: var(--accent-strong);
+    border-color: color-mix(in srgb, var(--accent-strong) 70%, var(--border));
+  }
+
+  .rel-switch-row[aria-checked="true"] .rel-switch-knob {
+    transform: translateX(18px);
+    border-color: color-mix(in srgb, var(--accent-strong) 40%, var(--border));
+  }
 </style>
 
-<script is:inline>
+<!-- noUiSlider CSS -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/nouislider@15.7.1/dist/nouislider.min.css" />
+
+<!-- noUiSlider JS -->
+<script is:inline src="https://cdn.jsdelivr.net/npm/nouislider@15.7.1/dist/nouislider.min.js"></script>
+
+<script is:inline define:vars={{ formationYearMin: formationYearRange.min, formationYearMax: formationYearRange.max }}>
   const STORAGE_KEY = 'co.index.filter';
+  const FORMATION_YEAR_MIN = formationYearMin;
+  const FORMATION_YEAR_MAX = formationYearMax;
   const KIND_ALLOWED = ['all', 'unit', 'person'];
   const RESULT_ALLOWED = ['any', 'quarter', 'semi', 'final', 'win'];
   const SORT_ALLOWED = ['reading', 'formation', 'birthday'];
@@ -1512,7 +1723,18 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
   }
 
   function readStateFromUrlAndStorage() {
-    const def = { sort: 'reading', base: 'today', kind: 'all', m1: 'any', koc: 'any', r1: 'any', detail: 'simple' };
+    const def = { 
+      sort: 'reading', 
+      base: 'today', 
+      kind: 'all', 
+      m1: 'any', 
+      koc: 'any', 
+      r1: 'any', 
+      detail: 'simple',
+      formationYearMin: FORMATION_YEAR_MIN,
+      formationYearMax: FORMATION_YEAR_MAX,
+      includeOthers: true
+    };
 
     try {
       const url = new URL(location.href);
@@ -1542,6 +1764,9 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
           koc:  fromUrl.koc  || def.koc,
           r1:   fromUrl.r1   || def.r1,
           detail: fromUrl.detail || def.detail,
+          formationYearMin: def.formationYearMin,
+          formationYearMax: def.formationYearMax,
+          includeOthers: def.includeOthers
         };
       }
     } catch (_) {}
@@ -1557,7 +1782,10 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
         const koc  = RESULT_ALLOWED.includes(parsed.koc) ? parsed.koc : def.koc;
         const r1   = RESULT_ALLOWED.includes(parsed.r1) ? parsed.r1 : def.r1;
         const detail = DETAIL_ALLOWED.includes(parsed.detail) ? parsed.detail : def.detail;
-        return { sort, base, kind, m1, koc, r1, detail };
+        const formationYearMin = typeof parsed.formationYearMin === 'number' ? parsed.formationYearMin : def.formationYearMin;
+        const formationYearMax = typeof parsed.formationYearMax === 'number' ? parsed.formationYearMax : def.formationYearMax;
+        const includeOthers = typeof parsed.includeOthers === 'boolean' ? parsed.includeOthers : def.includeOthers;
+        return { sort, base, kind, m1, koc, r1, detail, formationYearMin, formationYearMax, includeOthers };
       }
     } catch (_) {}
 
@@ -1652,13 +1880,28 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
       const m1Rank   = parseRankSort(el.getAttribute('data-m1-rank'));
       const kocRank  = parseRankSort(el.getAttribute('data-koc-rank'));
       const r1Rank   = parseRankSort(el.getAttribute('data-r1-rank'));
+      const birthYear = el.getAttribute('data-birth-year');
 
       const okKind = matchKind(itemKind, state.kind);
       const okM1   = matchResultFilter(m1Rank, state.m1);
       const okKoc  = matchResultFilter(kocRank, state.koc);
       const okR1   = matchResultFilter(r1Rank, state.r1);
+      
+      // 結成年フィルター（ユニットのみ）
+      let okFormationYear = true;
+      if (itemKind === 'unit') {
+        if (birthYear) {
+          const year = parseInt(birthYear);
+          if (!isNaN(year)) {
+            okFormationYear = year >= state.formationYearMin && year <= state.formationYearMax;
+          }
+        } else {
+          // birth_yearが空（結成年不明）の場合、includeOthersに従う
+          okFormationYear = state.includeOthers;
+        }
+      }
 
-      const show = okKind && okM1 && okKoc && okR1;
+      const show = okKind && okM1 && okKoc && okR1 && okFormationYear;
       if (show) {
         el.removeAttribute('hidden');
       } else {
@@ -1673,13 +1916,28 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
       const m1Rank   = parseRankSort(el.getAttribute('data-m1-rank'));
       const kocRank  = parseRankSort(el.getAttribute('data-koc-rank'));
       const r1Rank   = parseRankSort(el.getAttribute('data-r1-rank'));
+      const birthYear = el.getAttribute('data-birth-year');
 
       const okKind = matchKind(itemKind, state.kind);
       const okM1   = matchResultFilter(m1Rank, state.m1);
       const okKoc  = matchResultFilter(kocRank, state.koc);
       const okR1   = matchResultFilter(r1Rank, state.r1);
+      
+      // 結成年フィルター（ユニットのみ）
+      let okFormationYear = true;
+      if (itemKind === 'unit') {
+        if (birthYear) {
+          const year = parseInt(birthYear);
+          if (!isNaN(year)) {
+            okFormationYear = year >= state.formationYearMin && year <= state.formationYearMax;
+          }
+        } else {
+          // birth_yearが空（結成年不明）の場合、includeOthersに従う
+          okFormationYear = state.includeOthers;
+        }
+      }
 
-      const show = okKind && okM1 && okKoc && okR1;
+      const show = okKind && okM1 && okKoc && okR1 && okFormationYear;
       if (show) {
         el.removeAttribute('hidden');
       } else {
@@ -1795,11 +2053,86 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
       applyFilter(state);
     });
 
+    // noUiSlider の初期化
+    const sliderEl = document.getElementById('formation-year-slider');
+    if (sliderEl && typeof noUiSlider !== 'undefined') {
+      // デフォルト値を使用（stateに値がない場合に備えて）
+      const initMin = state.formationYearMin ?? FORMATION_YEAR_MIN;
+      const initMax = state.formationYearMax ?? FORMATION_YEAR_MAX;
+      
+      noUiSlider.create(sliderEl, {
+        start: [initMin, initMax],
+        connect: true,
+        step: 1,
+        range: {
+          'min': FORMATION_YEAR_MIN,
+          'max': FORMATION_YEAR_MAX
+        },
+        format: {
+          to: function(value) {
+            return Math.round(value);
+          },
+          from: function(value) {
+            return Number(value);
+          }
+        }
+      });
+
+      const minSpan = document.getElementById('formation-year-min');
+      const maxSpan = document.getElementById('formation-year-max');
+
+      sliderEl.noUiSlider.on('update', function(values) {
+        const min = parseInt(values[0]);
+        const max = parseInt(values[1]);
+        if (minSpan) minSpan.textContent = min.toString();
+        if (maxSpan) maxSpan.textContent = max.toString();
+        
+        // スライダー移動中もリアルタイムでフィルタを適用
+        state = { ...state, formationYearMin: min, formationYearMax: max };
+        applyFilter(state);
+      });
+
+      sliderEl.noUiSlider.on('change', function(values) {
+        const min = parseInt(values[0]);
+        const max = parseInt(values[1]);
+        state = { ...state, formationYearMin: min, formationYearMax: max };
+        writeStateToUrlAndStorage(state);
+      });
+    }
+
+    // 「その他を含む」トグルボタンのイベント
+    const includeOthersToggle = document.getElementById('include-others');
+    if (includeOthersToggle) {
+      includeOthersToggle.setAttribute('aria-checked', state.includeOthers ? 'true' : 'false');
+      
+      includeOthersToggle.addEventListener('click', function() {
+        const newState = this.getAttribute('aria-checked') !== 'true';
+        this.setAttribute('aria-checked', newState ? 'true' : 'false');
+        state = { ...state, includeOthers: newState };
+        applyFilter(state);
+        writeStateToUrlAndStorage(state);
+      });
+      
+      includeOthersToggle.addEventListener('keydown', function(e) {
+        if (e.key === ' ' || e.key === 'Enter') {
+          e.preventDefault();
+          const newState = this.getAttribute('aria-checked') !== 'true';
+          this.setAttribute('aria-checked', newState ? 'true' : 'false');
+          state = { ...state, includeOthers: newState };
+          applyFilter(state);
+          writeStateToUrlAndStorage(state);
+        }
+      });
+    }
+
     window.addEventListener('popstate', () => {
       const st = readStateFromUrlAndStorage();
       state = st;
       syncTabs(state);
       applyFilter(state);
+      if (includeOthersToggle) {
+        includeOthersToggle.setAttribute('aria-checked', st.includeOthers ? 'true' : 'false');
+      }
     });
   }
 

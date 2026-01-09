@@ -1533,3 +1533,17 @@ export function getEditionWinners(comp: string, year: number): string[] {
   
   return rows.map(row => row.name);
 }
+
+/* 結成年の範囲を取得（ユニットのみ） */
+export function getFormationYearRange(): { min: number; max: number } {
+  const result = db().prepare(`
+    SELECT MIN(birth_year) as min_year, MAX(birth_year) as max_year
+    FROM comedians
+    WHERE birth_year IS NOT NULL AND kind = 'unit' AND canonical_id IS NULL
+  `).get() as { min_year: number; max_year: number };
+  
+  return {
+    min: result.min_year || 1950,
+    max: result.max_year || new Date().getFullYear()
+  };
+}
