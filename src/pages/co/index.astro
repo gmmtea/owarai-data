@@ -556,13 +556,6 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
         <button type="button" class="kind-tab" data-sort="formation">ユニット結成年順</button>
         <button type="button" class="kind-tab" data-sort="birthday">個人年齢順</button>
       </div>
-      
-      <!-- 詳細表示切り替え -->
-      <div id="detail-tabs" class="kind-tabs" data-detail="simple">
-        <span class="result-label">表示形式:</span>
-        <button type="button" class="kind-tab is-active" data-detail="simple">簡潔</button>
-        <button type="button" class="kind-tab" data-detail="detailed">詳細</button>
-      </div>
     </div>
     
     <div class="co-filter-row" id="base-filter-row" style="display: none;">
@@ -643,6 +636,24 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
           aria-checked="true"
         >
           <span class="rel-switch-label">その他（結成年未設定）を含む</span>
+          <span class="rel-switch-track" aria-hidden="true">
+            <span class="rel-switch-knob" aria-hidden="true"></span>
+          </span>
+        </button>
+      </div>
+    </div>
+
+    <div class="co-filter-row">
+      <!-- 詳細表示切り替え -->
+      <div class="include-others-filter">
+        <button
+          id="detail-toggle"
+          class="rel-switch-row"
+          type="button"
+          role="switch"
+          aria-checked="false"
+        >
+          <span class="rel-switch-label">詳細表示</span>
           <span class="rel-switch-track" aria-hidden="true">
             <span class="rel-switch-knob" aria-hidden="true"></span>
           </span>
@@ -1969,7 +1980,12 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
     setActiveTab(document.getElementById('m1-tabs'),   'm1',   state.m1);
     setActiveTab(document.getElementById('koc-tabs'),  'koc',  state.koc);
     setActiveTab(document.getElementById('r1-tabs'),   'r1',   state.r1);
-    setActiveTab(document.getElementById('detail-tabs'), 'detail', state.detail);
+    
+    // 詳細表示トグルを同期
+    const detailToggle = document.getElementById('detail-toggle');
+    if (detailToggle) {
+      detailToggle.setAttribute('aria-checked', state.detail === 'detailed' ? 'true' : 'false');
+    }
   }
 
   function setupFilter() {
@@ -1979,8 +1995,8 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
     const m1Wrap   = document.getElementById('m1-tabs');
     const kocWrap  = document.getElementById('koc-tabs');
     const r1Wrap   = document.getElementById('r1-tabs');
-    const detailWrap = document.getElementById('detail-tabs');
-    if (!sortWrap || !baseWrap || !kindWrap || !m1Wrap || !kocWrap || !r1Wrap || !detailWrap) return;
+    const detailToggle = document.getElementById('detail-toggle');
+    if (!sortWrap || !baseWrap || !kindWrap || !m1Wrap || !kocWrap || !r1Wrap || !detailToggle) return;
 
     let state = readStateFromUrlAndStorage();
     syncTabs(state);
@@ -2046,12 +2062,31 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
       applyFilter(state);
     });
 
-    wireTabs(detailWrap, 'detail', (v) => {
-      state = { ...state, detail: v };
-      setActiveTab(detailWrap, 'detail', v);
-      writeStateToUrlAndStorage(state);
-      applyFilter(state);
-    });
+    // 詳細表示トグルボタンのイベント
+    if (detailToggle) {
+      detailToggle.setAttribute('aria-checked', state.detail === 'detailed' ? 'true' : 'false');
+      
+      detailToggle.addEventListener('click', function() {
+        const newState = this.getAttribute('aria-checked') !== 'true';
+        this.setAttribute('aria-checked', newState ? 'true' : 'false');
+        const newDetail = newState ? 'detailed' : 'simple';
+        state = { ...state, detail: newDetail };
+        applyFilter(state);
+        writeStateToUrlAndStorage(state);
+      });
+      
+      detailToggle.addEventListener('keydown', function(e) {
+        if (e.key === ' ' || e.key === 'Enter') {
+          e.preventDefault();
+          const newState = this.getAttribute('aria-checked') !== 'true';
+          this.setAttribute('aria-checked', newState ? 'true' : 'false');
+          const newDetail = newState ? 'detailed' : 'simple';
+          state = { ...state, detail: newDetail };
+          applyFilter(state);
+          writeStateToUrlAndStorage(state);
+        }
+      });
+    }
 
     // noUiSlider の初期化
     const sliderEl = document.getElementById('formation-year-slider');
@@ -2132,6 +2167,9 @@ const birthdayAprilYears = Object.keys(birthdayAprilGroups).sort((a, b) => parse
       applyFilter(state);
       if (includeOthersToggle) {
         includeOthersToggle.setAttribute('aria-checked', st.includeOthers ? 'true' : 'false');
+      }
+      if (detailToggle) {
+        detailToggle.setAttribute('aria-checked', st.detail === 'detailed' ? 'true' : 'false');
       }
     });
   }
