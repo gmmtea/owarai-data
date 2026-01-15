@@ -16,7 +16,6 @@ https://gmmtea.github.io/owarai-data/
 - **フロントエンド**: Astro
 - **スタイリング**: CSS
 - **データベース**: SQLite
-- **データ収集**: Playwright（ブラウザ自動化）, Cheerio（HTMLパース）
 - **デプロイ**: GitHub Pages（GitHub Actions）
 
 ## プロジェクト構成
@@ -34,8 +33,7 @@ owarai-data/
 │   ├── edition_judges.csv           # 大会別年別審査員の紐付け
 │   ├── memberships.csv              # ユニットのメンバー構成
 │   └── updates.csv                  # 更新履歴
-├── scripts/                # データ収集・インポートスクリプト
-│   ├── m1_scrape_multi.js           # M-1データスクレイピング
+├── scripts/                # スクリプト
 │   └── import-seed-csv.js           # CSVからDBへインポート
 ├── src/
 │   ├── components/         # 再利用可能なUIコンポーネント
@@ -118,7 +116,6 @@ npm run dev
 | `npm run build` | 本番用に静的サイトをビルド（`./dist/`に出力） |
 | `npm run preview` | ビルドしたサイトをローカルでプレビュー |
 | `npm run data:seed:csv` | CSVファイルをSQLiteにインポート |
-| `npm run data:scrape:m1` | M-1データをスクレイピング |
 | `npm run deploy:actions` | GitHub Actions経由でデプロイをトリガー |
 
 ## データ構造
