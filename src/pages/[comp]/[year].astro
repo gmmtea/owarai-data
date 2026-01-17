@@ -216,22 +216,34 @@ function getReferenceYmd(): Ymd | null {
 const refYmd = getReferenceYmd();
 
 // birth_year/birth_month/birth_day から refYmd 時点での経過年数を計算
+// isBirthday: trueの場合は誕生日（個人）、falseの場合は結成日（ユニット）
 function calcElapsedYears(
   by?: number | null,
   bm?: number | null,
-  bd?: number | null
+  bd?: number | null,
+  isBirthday: boolean = false
 ): number | null {
   if (!refYmd) return null;
   if (by == null) return null;
 
   let years = refYmd.y - by;
 
-  // 月日が両方ある場合だけ「誕生日（結成日）を迎えたか」で±1調整
+  // 月日が両方ある場合は実際の月日で調整
   if (bm != null && bd != null) {
     if (refYmd.m < bm || (refYmd.m === bm && refYmd.d < bd)) {
       years -= 1;
     }
+  } 
+  // 月日が欠けている場合はデフォルト値で調整
+  // 誕生日の場合は4月2日、結成日の場合は4月1日をデフォルトに
+  else {
+    const defaultMonth = 4;
+    const defaultDay = isBirthday ? 2 : 1;
+    if (refYmd.m < defaultMonth || (refYmd.m === defaultMonth && refYmd.d < defaultDay)) {
+      years -= 1;
+    }
   }
+  
   if (years < 0) return null;
   return years;
 }
@@ -427,7 +439,8 @@ function formatFormationYears(years?: number | null): string {
                     calcElapsedYears(
                       row.birth_year,
                       row.birth_month,
-                      row.birth_day
+                      row.birth_day,
+                      true  // 誕生日（個人）は4月2日デフォルト
                     )
                   ) || "（未設定）"}
                 </td>
@@ -480,7 +493,8 @@ function formatFormationYears(years?: number | null): string {
                     calcElapsedYears(
                       row.birth_year,
                       row.birth_month,
-                      row.birth_day
+                      row.birth_day,
+                      false  // 結成日（ユニット）は4月1日デフォルト
                     )
                   ) || "（未設定）"}
                 </td>

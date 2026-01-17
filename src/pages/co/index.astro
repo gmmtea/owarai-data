@@ -201,7 +201,8 @@ if (buildDate) {
 }
 
 // birth_date文字列から日付オブジェクトを作成（デフォルト補完あり）
-function parseDate(dateStr: string | null): Date | null {
+// isBirthday: trueの場合は誕生日（個人）、falseの場合は結成日（ユニット）
+function parseDate(dateStr: string | null, isBirthday: boolean = false): Date | null {
   if (!dateStr || dateStr.trim() === '') return null;
   
   const normalized = dateStr.replace(/年|月|日/g, '/').replace(/\/+/g, '/').replace(/\/$/, '');
@@ -211,7 +212,8 @@ function parseDate(dateStr: string | null): Date | null {
   
   const year = parts[0];
   const month = parts.length >= 2 && !isNaN(parts[1]) ? parts[1] : 4; // デフォルト4月
-  const day = parts.length >= 3 && !isNaN(parts[2]) ? parts[2] : 1;   // デフォルト1日
+  // 誕生日の場合は4月2日、結成日の場合は4月1日をデフォルトに
+  const day = parts.length >= 3 && !isNaN(parts[2]) ? parts[2] : (isBirthday ? 2 : 1);
   
   return new Date(year, month - 1, day); // monthは0ベース
 }
@@ -323,17 +325,37 @@ function formatPeriodLabel(years: number, baseType: 'today' | 'april', sortType:
 
 /* ============================= 詳細表示用ヘルパー関数 ============================= */
 // 日付フォーマット（Y年M月D日）
+// 表示専用：元のデータをそのまま整形して表示
 function formatDate(birthDate: string | null): string {
   if (!birthDate) return "未設定";
   
-  const date = parseDate(birthDate);
-  if (!date) return birthDate; // パースできない場合は元の文字列を返す
+  // 元の文字列を正規化して表示
+  const normalized = birthDate.replace(/年|月|日/g, '/').replace(/\/+/g, '/').replace(/\/$/, '');
+  const parts = normalized.split('/').map(p => parseInt(p.trim()));
   
-  const year = date.getFullYear();
-  const month = date.getMonth() + 1;
-  const day = date.getDate();
+  if (parts.length === 0 || isNaN(parts[0])) return birthDate;
   
-  return `${year}年${month}月${day}日`;
+  const year = parts[0];
+  
+  // 年のみの場合
+  if (parts.length === 1) {
+    return `${year}年`;
+  }
+  
+  // 年月まである場合
+  if (parts.length === 2 && !isNaN(parts[1])) {
+    const month = parts[1];
+    return `${year}年${month}月`;
+  }
+  
+  // 年月日すべてある場合
+  if (parts.length >= 3 && !isNaN(parts[1]) && !isNaN(parts[2])) {
+    const month = parts[1];
+    const day = parts[2];
+    return `${year}年${month}月${day}日`;
+  }
+  
+  return birthDate; // パースできない場合は元の文字列を返す
 }
 
 /* ============================= 年ごとのソート機能 ============================= */
@@ -366,7 +388,7 @@ enriched
       });
 
       // 新形式（今日基準・年度基準）
-      const date = parseDate(r.birth_date);
+      const date = parseDate(r.birth_date, false); // ユニット結成日は4月1日デフォルト
       if (date) {
         const todayYears = getYearsFromToday(date);
         const yearBaseYears = getYearsFromYearBase(date, true);
@@ -430,7 +452,7 @@ enriched
       });
 
       // 新形式（今日基準・年度基準）
-      const date = parseDate(r.birth_date);
+      const date = parseDate(r.birth_date, true); // 個人誕生日は4月2日デフォルト
       if (date) {
         const todayYears = getYearsFromToday(date);
         const yearBaseYears = getYearsFromYearBase(date, false);
@@ -469,10 +491,32 @@ enriched
   });
 
 // 各年のデータを時系列順でソート（年ごとビューでは古い順、新形式のみ）
-// 時系列ソート関数（新しい順）
-function sortByChronological(a: Item, b: Item): number {
-  const dateA = parseDate(a.birth_date || null);
-  const dateB = parseDate(b.birth_date || null);
+// 時系列ソート関数（新しい順）- ユニット結成日用
+function sortByChronologicalFormation(a: Item, b: Item): number {
+  const dateA = parseDate(a.birth_date || null, false); // ユニット結成日
+  const dateB = parseDate(b.birth_date || null, false);
+  
+  // 日付が両方ある場合は日付順（新しい順）
+  if (dateA && dateB) {
+    const diff = dateB.getTime() - dateA.getTime();
+    if (diff !== 0) return diff;
+  }
+  
+  // 日付が片方のみある場合は、ある方を前に
+  if (dateA && !dateB) return -1;
+  if (!dateA && dateB) return 1;
+  
+  // 両方ない場合、または同じ日付の場合は名前順
+  const ak = sortKey(a.reading, a.name);
+  const bk = sortKey(b.reading, b.name);
+  const c = collator.compare(ak, bk);
+  return c !== 0 ? c : collator.compare(a.name, b.name);
+}
+
+// 時系列ソート関数（新しい順）- 個人誕生日用
+function sortByChronologicalBirthday(a: Item, b: Item): number {
+  const dateA = parseDate(a.birth_date || null, true); // 個人誕生日
+  const dateB = parseDate(b.birth_date || null, true);
   
   // 日付が両方ある場合は日付順（新しい順）
   if (dateA && dateB) {
@@ -492,9 +536,17 @@ function sortByChronological(a: Item, b: Item): number {
 }
 
 // 新形式（今日基準・4月基準）は時系列順でソート
-[formationTodayGroups, formationAprilGroups, birthdayTodayGroups, birthdayAprilGroups].forEach(groups => {
+// 結成日用グループ
+[formationTodayGroups, formationAprilGroups].forEach(groups => {
   Object.values(groups).forEach(group => {
-    group.sort(sortByChronological);
+    group.sort(sortByChronologicalFormation);
+  });
+});
+
+// 誕生日用グループ
+[birthdayTodayGroups, birthdayAprilGroups].forEach(groups => {
+  Object.values(groups).forEach(group => {
+    group.sort(sortByChronologicalBirthday);
   });
 });
 
