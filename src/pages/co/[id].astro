@@ -335,36 +335,71 @@ function formatDateWithAge(dateStr: string | null): { dateText: string; ageText:
   
   if (parts.length === 0 || isNaN(parts[0])) return null;
   
-  const year = parts[0];
-  const month = parts.length >= 2 && !isNaN(parts[1]) ? parts[1] : 4; // デフォルト4月
-  const day = parts.length >= 3 && !isNaN(parts[2]) ? parts[2] : 1;   // デフォルト1日
+  // 年のみ判定：4桁以上の数値なら年、それ以外は月と判断
+  const isYearOnly = parts.length === 1 && parts[0] >= 1000;
+  const hasYear = parts.length >= 1 && parts[0] >= 1000;
+  
+  let year: number | null = null;
+  let month: number | null = null;
+  let day: number | null = null;
+  
+  if (hasYear) {
+    // 年月日 or 年月 or 年のみ
+    year = parts[0];
+    month = parts.length >= 2 && !isNaN(parts[1]) ? parts[1] : null;
+    day = parts.length >= 3 && !isNaN(parts[2]) ? parts[2] : null;
+  } else {
+    // 月日のみ（年がない）
+    month = parts[0];
+    day = parts.length >= 2 && !isNaN(parts[1]) ? parts[1] : null;
+  }
   
   // 日付文字列の作成
   let dateText = '';
-  if (parts.length >= 3 && !isNaN(parts[2])) {
+  if (year != null && month != null && day != null) {
     dateText = `${year}年${month}月${day}日`;
-  } else if (parts.length >= 2 && !isNaN(parts[1])) {
+  } else if (year != null && month != null) {
     dateText = `${year}年${month}月`;
-  } else {
+  } else if (year != null) {
     dateText = `${year}年`;
+  } else if (month != null && day != null) {
+    dateText = `${month}月${day}日`;
+  } else if (month != null) {
+    dateText = `${month}月`;
+  } else {
+    return null;
   }
   
-  // 年齢の計算（正確な計算）
-  const birthDate = new Date(year, month - 1, day);
-  let age = TODAY.getFullYear() - birthDate.getFullYear();
-  
-  // 今年の誕生日がまだ来ていない場合は1歳減らす
-  const todayMonthDay = TODAY.getMonth() * 100 + TODAY.getDate();
-  const birthMonthDay = birthDate.getMonth() * 100 + birthDate.getDate();
-  if (todayMonthDay < birthMonthDay) {
-    age--;
-  }
-  
-  // 年齢表記
-  const ageText = comedian.kind === 'person' ? `${age}歳` : `${age}年`;
+  // actionText（「生まれ」「結成」）は常に設定
   const actionText = comedian.kind === 'person' ? '生まれ' : '結成';
   
-  return { dateText, ageText, actionText };
+  // 年齢の計算（年がある場合のみ）
+  if (year != null) {
+    // デフォルト値：個人誕生日は4月2日、ユニット結成日は4月1日
+    const defaultMonth = 4;
+    const defaultDay = comedian.kind === 'person' ? 2 : 1;
+    
+    const calcMonth = month ?? defaultMonth;
+    const calcDay = day ?? defaultDay;
+    
+    const birthDate = new Date(year, calcMonth - 1, calcDay);
+    let age = TODAY.getFullYear() - birthDate.getFullYear();
+    
+    // 今年の誕生日がまだ来ていない場合は1歳減らす
+    const todayMonthDay = TODAY.getMonth() * 100 + TODAY.getDate();
+    const birthMonthDay = birthDate.getMonth() * 100 + birthDate.getDate();
+    if (todayMonthDay < birthMonthDay) {
+      age--;
+    }
+    
+    // 年齢表記
+    const ageText = comedian.kind === 'person' ? `${age}歳` : `${age}年`;
+    
+    return { dateText, ageText, actionText };
+  }
+  
+  // 年がない場合は年齢計算なし
+  return { dateText, ageText: '', actionText };
 }
 
 const birthDateData = formatDateWithAge(comedian.birth_date);
@@ -451,7 +486,7 @@ const yearBlocksWithCols = yearBlocks.map((blk: any) => ({
       {birthDateData && (
         <span class="birth-date">
           {birthDateData.dateText}{birthDateData.actionText}
-          <span class="age-text">（{birthDateData.ageText}）</span>
+          {birthDateData.ageText && <span class="age-text">（{birthDateData.ageText}）</span>}
         </span>
       )}
       {comedian.m1_url && (
