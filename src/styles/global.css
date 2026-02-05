@@ -225,6 +225,20 @@ tbody tr:hover{ background:#fff8f1 }
   z-index: 2;
   width: 60px;
 }
+/* 審査員得点表の芸人名列は幅を広く */
+.judge-scores th.sticky-1,
+.judge-scores td.sticky-1 {
+  width: 220px;
+  min-width: 220px;
+}
+/* 審査員得点表の固定列のヒートマップ背景色を維持 */
+.judge-scores td.sticky-1.heat {
+  background-color: inherit !important;
+}
+/* 審査員得点表の固定列ホバー時の背景色調整 */
+.judge-scores tbody tr:hover > td.sticky-1:not(.heat) {
+  background: #fff8f1;
+}
 /* 先頭列セルの既定色（白） */
 .table-wrap td.sticky-1 { background: #fff; }
 /* 行ホバー時は先頭列も同じ色に */
@@ -432,7 +446,7 @@ a.video-link.video-youtube{ color:#ff0033 }
 /* 審査員名ヘッダは改行可・狭幅 */
 table.judge-scores{
   width:100%;
-  min-width:auto;        /* 960pxなどの固定を解除 */
+  min-width:800px;        /* 審査員得点表は広めの最小幅を確保 */
 }
 table.judge-scores th{
   line-height:1.25;
@@ -470,12 +484,13 @@ table.judge-scores .col-name a{
   align-items:center;
   line-height:1.5;
 }
-table.judge-scores .col-name .truncate{
+table.judge-scores .col-name .truncate,
+table.judge-scores .col-name.sticky-1 .truncate{
   display:inline-block;
   line-height:1.5;
   white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
+  max-width: 200px; /* 固定列の幅に合わせてゆとりを持って設定 */
+  /* 基本的には省略なし、必要な場合のみ安全装置として機能 */
 }
 
 /* スマホでさらに圧縮 */

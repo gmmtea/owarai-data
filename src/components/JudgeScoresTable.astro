@@ -121,7 +121,7 @@ const uid = Math.random().toString(36).slice(2);
       <table class={`judge-scores ${mode === "vote" ? "is-vote" : "is-score"}`}>
         <thead>
           <tr>
-            <th class="col-name"  data-sortable="text"   data-key="name">芸人</th>
+            <th class="col-name sticky-1"  data-sortable="text"   data-key="name">芸人</th>
             <th class="col-order" data-sortable="number" data-key="order_no">出順</th>
             <th class="col-total" data-sortable="number" data-key="total">合計</th>
             {table!.seats.map((s) =>
@@ -132,7 +132,7 @@ const uid = Math.random().toString(36).slice(2);
         <tbody>
           {table!.rows.map((r) => (
             <tr>
-              <td class="col-name"
+              <td class="col-name sticky-1"
                   data-value-text={(r.comedian_reading ?? r.comedian_name)}>
                 <a href={`${base}co/${r.comedian_id}`} title={r.comedian_name}>
                   <span class="truncate">{r.comedian_name}</span>
