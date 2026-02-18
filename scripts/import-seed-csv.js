@@ -23,12 +23,14 @@ fs.mkdirSync("data", { recursive: true });
 /* ============================= ユーティリティ ============================= */
 const trimOnly = (s) => (s ?? "").toString().trim();
 
-// (name, number) から決定的ID（sha256先頭20hex=80bit）
+// (name, number) から決定的ID（Base36の8文字）
 const makeId = (name, number) => {
   const left  = trimOnly(name);
   const right = (number == null || number === "") ? "" : `_${String(number)}`;
   const base  = `${left}${right}`;
-  return crypto.createHash("sha256").update(base, "utf8").digest("hex").slice(0, 20);
+  const hash  = crypto.createHash("sha256").update(base, "utf8").digest();
+  const bigint = BigInt('0x' + hash.toString('hex'));
+  return bigint.toString(36).slice(-8);
 };
 
 // judges用のID（名前のみで決定）
@@ -1315,3 +1317,50 @@ try {
   try { if (fs.existsSync(TMP_PATH)) fs.rmSync(TMP_PATH); } catch {}
   throw e;
 }
+
+/* ============================= リダイレクトマップ生成 ============================= */
+// 旧ID生成（SHA256の先頭20文字）
+const makeOldId = (name, number) => {
+  const left = (name ?? "").toString().trim();
+  const right = (number == null || number === "") ? "" : `_${String(number)}`;
+  const base = `${left}${right}`;
+  return crypto.createHash("sha256").update(base, "utf8").digest("hex").slice(0, 20);
+};
+
+// DBを再度開く
+const dbForRedirects = new Database(DB_PATH, { readonly: true });
+
+// 代表名のみ取得
+const comediansForRedirects = dbForRedirects.prepare(`
+  SELECT name, number FROM comedians WHERE canonical_id IS NULL
+`).all();
+
+const redirects = {};
+const newIdsSet = new Set();
+const collisions = [];
+
+for (const co of comediansForRedirects) {
+  const oldId = makeOldId(co.name, co.number);
+  const newId = makeId(co.name, co.number);
+  
+  // 衝突チェック
+  if (newIdsSet.has(newId)) {
+    collisions.push({ name: co.name, number: co.number, newId });
+  }
+  newIdsSet.add(newId);
+  
+  redirects[`/co/${oldId}`] = `/co/${newId}`;
+}
+
+dbForRedirects.close();
+
+// 衝突があれば警告（エラーにはしない）
+if (collisions.length > 0) {
+  console.warn(`⚠️  警告: ${collisions.length}件のID衝突が検出されました:`);
+  collisions.forEach(c => {
+    console.warn(`  - ${c.name}${c.number ? `_${c.number}` : ""} → ${c.newId}`);
+  });
+}
+
+// redirects.json に出力
+fs.writeFileSync("redirects.json", JSON.stringify(redirects, null, 2));
