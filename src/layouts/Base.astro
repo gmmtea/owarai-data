@@ -10,6 +10,14 @@ const fullTitle = !title || title === siteTitle
 const base = import.meta.env.BASE_URL;
 const comps = listCompetitions(); // [{key,name,sort_order}, ...]
 const canonical = new URL(Astro.url.pathname, Astro.site).href;
+
+// WebSite構造化データ
+const websiteSchema = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": siteTitle,
+  "url": Astro.site?.href || canonical
+};
 ---
 <!DOCTYPE html>
 <html lang="ja">
@@ -19,11 +27,9 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href;
   <title>{fullTitle}</title>
     <meta name="description" content={description} />
     
-    <!-- Favicon設定 - Google検索での表示を改善 -->
-    <link rel="icon" href={`${base}favicon.png`} type="image/png" />
-    <link rel="icon" href={`${base}warai_3.png`} type="image/png" sizes="177x177" />
-    <link rel="apple-touch-icon" href={`${base}warai_3.png`} sizes="177x177" />
-    <link rel="shortcut icon" href={`${base}favicon.png`} type="image/png" />
+    <!-- Favicon設定 -->
+    <link rel="icon" type="image/png" href={new URL(`${base}favicon.png`, Astro.site).href} />
+    <link rel="apple-touch-icon" sizes="177x177" href={new URL(`${base}favicon.png`, Astro.site).href} />
     
 		<link rel="canonical" href={canonical} />
     <meta name="format-detection" content="telephone=no" />
@@ -31,8 +37,12 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href;
   <meta property="og:title" content={fullTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:type" content="website" />
-    <meta property="og:image" content={new URL(`${base}warai_3.png`, Astro.site).href} />
+    <meta property="og:image" content={new URL(`${base}favicon.png`, Astro.site).href} />
     <meta name="theme-color" content="#111111" />
+    
+    <!-- 構造化データ（JSON-LD） - Google検索でサイト名を表示 -->
+    <script type="application/ld+json" set:html={JSON.stringify(websiteSchema)} />
+    
 		<style is:global set:html={globalCss}></style>
 		{import.meta.env.PROD && (
 			<>
