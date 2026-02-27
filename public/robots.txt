@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://gmmtea.github.io/owarai-data/sitemap-index.xml
+Sitemap: https://owarai-data.com/sitemap-index.xml
