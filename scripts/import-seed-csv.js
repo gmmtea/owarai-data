@@ -516,9 +516,9 @@ db.transaction(() => {
       seq_no          INTEGER,
       final_date      TEXT,               -- 'YYYY-MM-DD'
       short_label     TEXT,
-      UNIQUE (competition_id, year)
+      UNIQUE (competition_id, year),
+      UNIQUE (competition_id, seq_no)
     );
-    CREATE INDEX idx_editions_comp_seq  ON editions(competition_id, seq_no);
     CREATE INDEX idx_editions_comp_date ON editions(competition_id, final_date);
 
     -- 芸人（(name, number) の複合ユニーク → TEXT主キー）
